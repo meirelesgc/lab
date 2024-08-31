@@ -9,3 +9,8 @@ CREATE TABLE IF NOT EXISTS documents (
     status pipeline_status DEFAULT 'IN-PROCESS',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS parameters (
+    parameter_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    parameter VARCHAR(255) NOT NULL,
+    synonyms TEXT[]
+);

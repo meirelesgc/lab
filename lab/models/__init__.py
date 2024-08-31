@@ -13,3 +13,9 @@ class Document(BaseModel):
     name: str
     status: str = 'IN-PROCESS'
     created_at: datetime = Field(default_factory=datetime.now)
+
+
+class Parameter(BaseModel):
+    parameter_id: UUID = Field(default_factory=uuid4)
+    parameter: str
+    synonyms: list = []

@@ -34,15 +34,16 @@ def list_database_documents() -> list[Document]:
         registry = conn.select(SCRIPT_SQL)
 
     documents = []
-    for document_id, name, status, created_at in registry:
-        documents.append(
-            Document(
-                document_id=document_id,
-                name=name,
-                status=status,
-                created_at=created_at,
+    if documents:
+        for document_id, name, status, created_at in registry:
+            documents.append(
+                Document(
+                    document_id=document_id,
+                    name=name,
+                    status=status,
+                    created_at=created_at,
+                )
             )
-        )
     return documents
 
 
@@ -52,4 +53,4 @@ def delete_database_document(document_id) -> None:
         WHERE document_id = %(document_id)s;
         """
     with Connection() as conn:
-        conn.exec(SCRIPT_SQL, document_id)
+        conn.exec(SCRIPT_SQL, str(document_id))
