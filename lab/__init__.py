@@ -10,6 +10,7 @@ from lab.models import Document, Message
 from lab.routers import openAI
 
 from .dao.dao_documents import add_database_document, list_database_documents
+from .dao.dao_ollama import add_database_text
 
 load_dotenv()
 
@@ -27,6 +28,8 @@ def upload_file(file: UploadFile = File(...)):
         buffer.write(file.file.read())
 
     # Etapa dois do registro
+    add_database_text(document.document_id)
+
     # Concluir a operação
     return document
 
