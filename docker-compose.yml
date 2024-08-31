@@ -1,0 +1,34 @@
+services:
+  database:
+    image: ankane/pgvector
+    container_name: database-lab
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-lab:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin-lab
+    environment:
+      PGADMIN_DEFAULT_EMAIL: postgres@postgres.com
+      PGADMIN_DEFAULT_PASSWORD: postgres
+      PGADMIN_LISTEN_PORT: 5050
+    ports:
+      - "5050:5050"
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama-lab
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-lab:/root/.ollama
+
+volumes:
+  db-lab:
+  ollama-lab:

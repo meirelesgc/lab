@@ -8,6 +8,11 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.12"
 fastapi = {extras = ["standard"], version = "^0.112.2"}
+psycopg = {extras = ["binary"], version = "^3.2.1"}
+python-multipart = "^0.0.9"
+python-dotenv = "^1.0.1"
+langchain-community = "^0.2.14"
+pypdf = "^4.3.1"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -38,5 +43,5 @@ pythonpath = "."
 addopts = '-p no:warnings'
 
 [tool.taskipy.tasks]
-run = 'fastapi dev lab'
+run = 'uvicorn lab:app --reload'
 test = 'pytest -s -x --cov=lab -vv'
