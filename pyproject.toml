@@ -13,6 +13,10 @@ python-multipart = "^0.0.9"
 python-dotenv = "^1.0.1"
 langchain-community = "^0.2.14"
 pypdf = "^4.3.1"
+openai = "^1.43.0"
+tiktoken = "^0.7.0"
+celery = {extras = ["rabitmq"], version = "^5.4.0"}
+flower = "^2.0.1"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -45,3 +49,5 @@ addopts = '-p no:warnings'
 [tool.taskipy.tasks]
 run = 'uvicorn lab:app --reload'
 test = 'pytest -s -x --cov=lab -vv'
+flower = 'celery -A lab.celery flower'
+worker = 'celery -A lab.celery worker --loglevel=INFO --concurrency=2'

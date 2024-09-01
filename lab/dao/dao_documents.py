@@ -54,3 +54,29 @@ def delete_database_document(document_id) -> None:
         """
     with Connection() as conn:
         conn.exec(SCRIPT_SQL, str(document_id))
+
+
+def list_llm_documents():
+    SCRIPT_SQL = """
+        SELECT document_id, document
+        FROM documents
+		WHERE status = 'STANDBY'
+        """
+    with Connection() as conn:
+        registry = conn.select(SCRIPT_SQL)
+
+    return registry
+
+
+def list_sigle_llm_document(document_id):
+    SCRIPT_SQL = """
+        SELECT document_id, document
+        FROM documents
+		WHERE
+            document_id = %(document_id)s
+            AND status = 'STANDBY';
+        """
+    with Connection() as conn:
+        registry = conn.select(SCRIPT_SQL, {'document_id': document_id})
+
+    return registry

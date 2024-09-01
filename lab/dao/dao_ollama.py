@@ -42,11 +42,13 @@ def add_database_text(document_id):
     model = Ollama(model='llama3.1', temperature=0.1)
     text = model.invoke(prompt)
 
-    script_sql = """
+    SCRIPT_SQL = """
         UPDATE documents
-        SET document = %s
-        WHERE document_id = %s;
+        SET
+            document = %(document)s,
+            status = 'STANDBY'
+        WHERE document_id = %(document_id)s;
         """
 
     with Connection() as conn:
-        conn.exec(script_sql, [text, document_id])
+        conn.exec(SCRIPT_SQL, {'document': text, 'document_id': document_id})

@@ -2,6 +2,8 @@ import os
 from http import HTTPStatus
 from uuid import UUID
 
+from celery import Celery
+from celery.exceptions import MaxRetriesExceededError
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -14,7 +16,7 @@ from .dao.dao_documents import (
     delete_database_document,
     list_database_documents,
 )
-from .dao.dao_ollama import add_database_text
+from .dao.dao_ollama import add_database_text, failed_add_database_text
 from .dao.dao_parameters import (
     add_database_parameter,
     delete_database_parameter,
@@ -27,6 +29,17 @@ load_dotenv()
 app = FastAPI()
 app.include_router(openAI.router)
 
+celery = Celery(
+    broker=os.getenv('BROKER', 'pyamqp://guest@localhost//'),
+    broker_connection_retry_on_startup=True,
+)
+
+
+@celery.task()
+def celery_add_database_text(document_id):
+    add_database_text(document_id)
+    return {'message': 'OK'}
+
 
 @app.post('/file', status_code=HTTPStatus.CREATED, response_model=Document)
 def upload_file(file: UploadFile = File(...)):
@@ -38,7 +51,7 @@ def upload_file(file: UploadFile = File(...)):
         buffer.write(file.file.read())
 
     # Etapa dois do registro
-    add_database_text(document.document_id)
+    celery_add_database_text.delay(document.document_id)
 
     # Concluir a operação
     return document
@@ -108,7 +121,7 @@ def update_parameter(parameter: Parameter):
     return parameter
 
 
-@app.delete('/parameter', response_model=Message)
+@app.delete('/parameter/{parameter_id}', response_model=Message)
 def delete_parameter(parameter_id: UUID):
     delete_database_parameter(parameter_id)
     return {'message': 'Parameter deleted!'}

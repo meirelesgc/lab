@@ -29,6 +29,12 @@ services:
     volumes:
       - ollama-lab:/root/.ollama
 
+  rabbitmq:
+    image: rabbitmq
+    container_name: rabbitmq-lab
+    ports:
+      - "5672:5672"
+  
 volumes:
   db-lab:
   ollama-lab:
