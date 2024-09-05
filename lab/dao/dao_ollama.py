@@ -1,9 +1,12 @@
 import os
 
+import spacy
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.llms.ollama import Ollama
 
 from ..dao import Connection
+
+nlp = spacy.load('pt_core_news_lg')
 
 
 def document_to_text(document_id):
@@ -24,23 +27,23 @@ def document_to_text(document_id):
 def add_database_text(document_id):
     text = document_to_text(document_id)
 
-    prompt = f"""
-        # Instruções
-        Remova do texto a seguir todas as datas que encontrar,
-        subistitua por '---';
+    # text = remove_named_entities(text)
 
-        Remova do texto a seguir todas os nomes proprios que encontrar,
-        subistitua por '---';
+    # prompt = f"""
+    #     ### Instruções
 
-        Não altere o restante do texto;
+    #     1. **Remova todas as datas** que encontrar no texto a seguir e substitua por `'---'`.
+    #     2. **Remova todos os nomes próprios e entidades nomeadas** que encontrar no texto a seguir e substitua por `'---'`.
+    #     3. **Não altere o restante do texto.**
 
-        '''
-        {text}
-        '''
-        """
+    #     ```
 
-    model = Ollama(model='llama3.1', temperature=0.1)
-    text = model.invoke(prompt)
+    #     {text}
+
+    #     """  # noqa: E501
+
+    # model = Ollama(model='llama3.1', temperature=0.1)
+    # text = model.invoke(prompt)
 
     SCRIPT_SQL = """
         UPDATE documents
@@ -52,3 +55,10 @@ def add_database_text(document_id):
 
     with Connection() as conn:
         conn.exec(SCRIPT_SQL, {'document': text, 'document_id': document_id})
+
+
+def remove_named_entities(text):
+    doc = nlp(text)
+    text = [token.text for token in doc if not token.ent_type_]
+    cleaned_text = ' '.join(text)
+    return cleaned_text

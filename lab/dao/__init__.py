@@ -10,7 +10,7 @@ class Connection:
         user: str = os.getenv('PG_USER', 'postgres'),
         password: str = os.getenv('PASSWORD', 'postgres'),
         host: str = os.getenv('HOST', 'localhost'),
-        port: int = int(os.getenv('PORT', '5432')),
+        port: int = int(os.getenv('PORT', '5433')),
     ):
         self.database = database
         self.user = user
@@ -47,7 +47,8 @@ class Connection:
             cursor.execute(script_sql, parameters)
             self.connection.commit()
 
-    def execmany(self, script_sql: str, parameters: list = []):
+    def exec_with_result(self, script_sql: str, parameters: list = []):
         with self.connection.cursor() as cursor:
-            cursor.executemany(script_sql, parameters)
+            cursor.execute(script_sql, parameters)
             self.connection.commit()
+            return cursor.fetchone()

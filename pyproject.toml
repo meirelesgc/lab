@@ -17,6 +17,7 @@ openai = "^1.43.0"
 tiktoken = "^0.7.0"
 celery = {extras = ["rabitmq"], version = "^5.4.0"}
 flower = "^2.0.1"
+spacy = "^3.7.6"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -50,4 +51,4 @@ addopts = '-p no:warnings'
 run = 'uvicorn lab:app --reload'
 test = 'pytest -s -x --cov=lab -vv'
 flower = 'celery -A lab.celery flower'
-worker = 'celery -A lab.celery worker --loglevel=INFO --concurrency=2'
+worker = 'celery -A lab.routers.documents.celery worker --loglevel=INFO --concurrency=1'

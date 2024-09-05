@@ -28,13 +28,16 @@ def list_database_documents() -> list[Document]:
             status,
             created_at
         FROM
-            documents;
+            documents
+        ORDER BY
+            status,
+            created_at 	DESC;
         """
     with Connection() as conn:
         registry = conn.select(SCRIPT_SQL)
 
     documents = []
-    if documents:
+    if registry:
         for document_id, name, status, created_at in registry:
             documents.append(
                 Document(
@@ -53,30 +56,23 @@ def delete_database_document(document_id) -> None:
         WHERE document_id = %(document_id)s;
         """
     with Connection() as conn:
-        conn.exec(SCRIPT_SQL, str(document_id))
+        conn.exec(SCRIPT_SQL, {'document_id': document_id})
 
 
-def list_llm_documents():
+def select_llm_documents(document_id=None):
     SCRIPT_SQL = """
         SELECT document_id, document
         FROM documents
-		WHERE status = 'STANDBY'
+        WHERE status = 'STANDBY'
         """
+
+    if document_id is not None:
+        SCRIPT_SQL += 'AND document_id = %(document_id)s'
+
     with Connection() as conn:
-        registry = conn.select(SCRIPT_SQL)
+        registry = conn.select(
+            SCRIPT_SQL,
+            {'document_id': document_id} if document_id is not None else {},
+        )
 
-    return registry
-
-
-def list_sigle_llm_document(document_id):
-    SCRIPT_SQL = """
-        SELECT document_id, document
-        FROM documents
-		WHERE
-            document_id = %(document_id)s
-            AND status = 'STANDBY';
-        """
-    with Connection() as conn:
-        registry = conn.select(SCRIPT_SQL, {'document_id': document_id})
-
-    return registry
+    return registry or []
