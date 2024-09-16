@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS parameters (
     parameter VARCHAR(255) NOT NULL,
     synonyms TEXT []
 );
+CREATE TABLE IF NOT EXISTS patients (
+    patient_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255)
+);
 CREATE TABLE IF NOT EXISTS documents_openai (
     json_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id UUID REFERENCES documents(document_id) ON DELETE CASCADE,

@@ -39,3 +39,8 @@ class JsonDocumentEvaluation(BaseModel):
     json_id: UUID
     rating: int
     evaluated_document_json: Dict
+
+
+class Patient(BaseModel):
+    patient_id: UUID = Field(default_factory=uuid4)
+    name: str
