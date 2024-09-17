@@ -6,10 +6,11 @@ from celery import Celery
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from lab.models import Document, Message
+from lab.models import Document, DocumentMetadata, Message
 
 from ..dao.dao_documents import (
     add_database_document,
+    add_document_metadata,
     delete_database_document,
     list_database_documents,
 )
@@ -43,6 +44,16 @@ def upload_file(file: UploadFile = File(...)):
 
     # Concluir a operação
     return document
+
+
+@router.put(
+    '/file/metadata',
+    status_code=HTTPStatus.OK,
+    response_model=Message,
+)
+def update_document_metadata(metadata: DocumentMetadata):
+    add_document_metadata(metadata)
+    return {'message': 'Updated documented'}
 
 
 @router.get('/file', response_model=list[Document])

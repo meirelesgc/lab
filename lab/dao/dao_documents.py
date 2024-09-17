@@ -76,3 +76,14 @@ def select_llm_documents(document_id=None):
         )
 
     return registry or []
+
+
+def add_document_metadata(metadata):
+    SCRIPT_SQL = """
+        UPDATE documents
+        SET patient_id = %(patient_id)s,
+            document_date = %(document_date)s
+        WHERE document_id = %(document_id)s
+        """
+    with Connection() as conn:
+        conn.exec(SCRIPT_SQL, metadata.model_dump())

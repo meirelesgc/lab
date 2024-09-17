@@ -16,6 +16,12 @@ class Document(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class DocumentMetadata(BaseModel):
+    document_id: UUID
+    patient_id: UUID
+    document_date: datetime
+
+
 class Parameter(BaseModel):
     parameter_id: UUID = Field(default_factory=uuid4)
     parameter: str

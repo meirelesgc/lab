@@ -1,3 +1,4 @@
+from http import HTTPStatus
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -9,7 +10,11 @@ from ..dao.dao_patient import add_patient, delete_patient, select_patients
 router = APIRouter(tags=['Patients'])
 
 
-@router.post('/patient', response_model=Patient)
+@router.post(
+    '/patient',
+    response_model=Patient,
+    status_code=HTTPStatus.CREATED,
+)
 def create_patient(name: str):
     patient = add_patient(name)
     return patient
