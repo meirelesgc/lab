@@ -6,11 +6,11 @@ import psycopg
 class Connection:
     def __init__(
         self,
-        database: str = os.getenv('DATABASE', 'postgres'),
-        user: str = os.getenv('PG_USER', 'postgres'),
-        password: str = os.getenv('PASSWORD', 'postgres'),
-        host: str = os.getenv('HOST', 'localhost'),
-        port: int = int(os.getenv('PORT', '5433')),
+        database: str = os.getenv('DATABASE'),
+        user: str = os.getenv('PG_USER'),
+        password: str = os.getenv('PASSWORD'),
+        host: str = os.getenv('HOST'),
+        port: int = int(os.getenv('PORT')),
     ):
         self.database = database
         self.user = user

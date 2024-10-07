@@ -18,6 +18,7 @@ tiktoken = "^0.7.0"
 celery = {extras = ["rabitmq"], version = "^5.4.0"}
 flower = "^2.0.1"
 spacy = "^3.7.6"
+pydantic-settings = "^2.5.2"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -1,12 +1,9 @@
 import os
 
-import spacy
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.llms.ollama import Ollama
 
 from ..dao import Connection
-
-nlp = spacy.load('pt_core_news_lg')
 
 
 def document_to_text(document_id):
@@ -27,24 +24,31 @@ def document_to_text(document_id):
 def add_database_text(document_id):
     text = document_to_text(document_id)
 
-    # text = remove_named_entities(text)
+    print(text)
+    prompt = f"""
+        Você é um especialista em segurança da informação.
 
-    # prompt = f"""
-    #     ### Instruções
+        Quero sua ajuda para reescrever um texto, removendo informações específicas. O objetivo é assegurar que cumpriremos a LGPD, eliminando os dados sensíveis que não devem ser trafegados.
 
-    #     1. **Remova todas as datas** que encontrar no texto a seguir e substitua por `'---'`.
-    #     2. **Remova todos os nomes próprios e entidades nomeadas** que encontrar no texto a seguir e substitua por `'---'`.
-    #     3. **Não altere o restante do texto.**
+        É crucial que o texto reescrito **não tenha os dados alterados além do que for pedido**. Por favor, substitua as informações no texto por tags específicas:
 
-    #     ```
+        - Datas: `<DATA>`
+        - Nomes de pessoas: `<NOME>`
+        - Nomes de instituições: `<NOME_ENTIDADE>`
+        - Qualquer forma de identificar os médicos: `<MEDICO>`
+        - Códigos que identificam pessoas (CPF, RG, CRM): `<ID_PESSOA>`
+        - Sintomas: mantenha os sintomas no texto original.
 
-    #     {text}
+        Coloque o texto resultante entre as tags `<CleanText>`.
 
-    #     """  # noqa: E501
+        ```
+        {text}
+        ```
+        """  # noqa: E501
 
-    # model = Ollama(model='llama3.1', temperature=0.1)
-    # text = model.invoke(prompt)
-
+    model = Ollama(model='llama3.2', temperature=0.1)
+    text = model.invoke(prompt)
+    print(text)
     SCRIPT_SQL = """
         UPDATE documents
         SET
@@ -55,10 +59,3 @@ def add_database_text(document_id):
 
     with Connection() as conn:
         conn.exec(SCRIPT_SQL, {'document': text, 'document_id': document_id})
-
-
-def remove_named_entities(text):
-    doc = nlp(text)
-    text = [token.text for token in doc if not token.ent_type_]
-    cleaned_text = ' '.join(text)
-    return cleaned_text
