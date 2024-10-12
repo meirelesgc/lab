@@ -6,15 +6,9 @@ from celery import Celery
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from lab.models import Document, DocumentMetadata, Message
+from lab.models import Document, JsonDocument, Message
 
-from ..dao.dao_documents import (
-    add_database_document,
-    add_document_metadata,
-    delete_database_document,
-    list_database_documents,
-)
-from ..dao.dao_ollama import add_database_text
+from ..dao import dao_documents, dao_ollama
 
 router = APIRouter(tags=['Documents'])
 
@@ -26,39 +20,37 @@ celery = Celery(
 
 @celery.task()
 def celery_add_database_text(document_id):
-    add_database_text(document_id)
+    # dao_ollama.add_database_text(document_id)
+    dao_ollama.add_database_metadata(document_id)
     return {'message': 'OK'}
 
 
-@router.post('/file', status_code=HTTPStatus.CREATED, response_model=Document)
-def upload_file(file: UploadFile = File(...)):
-    # Registrar que foi salvo e gerar um identificador
-    document = add_database_document(file.filename)
+@router.post(
+    '/file', status_code=HTTPStatus.CREATED, response_model=list[JsonDocument]
+)
+def upload_files(file: list[UploadFile] = File(...)):
+    documents = []
 
-    # Salvar o arquivo localmente
-    with open(f'documents/{document.document_id}.pdf', 'wb') as buffer:
-        buffer.write(file.file.read())
+    for pdf in file:
+        # Registrar que foi salvo e gerar um identificador
+        document = dao_documents.add_database_document(pdf.filename)
 
-    # Etapa dois do registro
-    celery_add_database_text.delay(document.document_id)
+        # Salvar o arquivo localmente
+        with open(f'documents/{document.document_id}.pdf', 'wb') as buffer:
+            buffer.write(pdf.file.read())
+
+        # Etapa dois do registro
+        celery_add_database_text.delay(document.document_id)
+
+        documents.append(document)
 
     # Concluir a operação
-    return document
-
-
-@router.put(
-    '/file/metadata',
-    status_code=HTTPStatus.OK,
-    response_model=Message,
-)
-def update_document_metadata(metadata: DocumentMetadata):
-    add_document_metadata(metadata)
-    return {'message': 'Updated documented'}
+    return documents
 
 
 @router.get('/file', response_model=list[Document])
 def list_files():
-    documents = list_database_documents()
+    documents = dao_documents.list_database_documents()
     if not documents:
         raise HTTPException(status_code=404, detail='File not found')
     return documents
@@ -90,7 +82,7 @@ def delete_file(document_id: UUID):
         raise HTTPException(status_code=404, detail='File not found')
 
     # Remove o arquivo
-    delete_database_document(document_id)
+    dao_documents.delete_database_document(document_id)
     os.remove(file_path)
 
     return {'message': 'Document deleted!'}

@@ -7,7 +7,13 @@ CREATE TABLE IF NOT EXISTS parameters (
 );
 CREATE TABLE IF NOT EXISTS patients (
     patient_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255)
+    name VARCHAR(255),
+    identifier VARCHAR UNIQUE
+);
+CREATE TABLE IF NOT EXISTS doctors (
+    doctor_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255),
+    identifier VARCHAR UNIQUE
 );
 CREATE TABLE IF NOT EXISTS documents (
     document_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -15,6 +21,7 @@ CREATE TABLE IF NOT EXISTS documents (
     document TEXT,
     status pipeline_status DEFAULT 'IN-PROCESS',
     patient_id UUID REFERENCES patients(patient_id) ON DELETE CASCADE,
+    doctor_id UUID REFERENCES doctors(doctor_id) ON DELETE CASCADE,
     document_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
