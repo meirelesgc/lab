@@ -20,27 +20,33 @@ celery = Celery(
 
 @celery.task()
 def celery_add_database_text(document_id):
-    # dao_ollama.add_database_text(document_id)
-    dao_ollama.add_database_metadata(document_id)
-    return {'message': 'OK'}
+    dao_ollama.add_database_text(document_id)
+    return {'message': 'Texto limpo'}
+
+
+@celery.task()
+def celery_add_database_metadata(document_id):
+    # dao_ollama.add_database_metadata(document_id)
+    return {'message': 'Metadados Extraidos'}
 
 
 @router.post(
     '/file', status_code=HTTPStatus.CREATED, response_model=list[JsonDocument]
 )
-def upload_files(file: list[UploadFile] = File(...)):
+def upload_files(files: list[UploadFile] = File(...)):
     documents = []
 
-    for pdf in file:
+    for file in files:
         # Registrar que foi salvo e gerar um identificador
-        document = dao_documents.add_database_document(pdf.filename)
+        document = dao_documents.add_database_document(file.filename)
 
         # Salvar o arquivo localmente
         with open(f'documents/{document.document_id}.pdf', 'wb') as buffer:
-            buffer.write(pdf.file.read())
+            buffer.write(file.file.read())
 
         # Etapa dois do registro
         celery_add_database_text.delay(document.document_id)
+        celery_add_database_metadata.delay(document.document_id)
 
         documents.append(document)
 

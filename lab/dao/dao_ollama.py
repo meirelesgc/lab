@@ -37,52 +37,53 @@ def parse_metadata(string):
 def add_database_metadata(document_id):
     text = document_to_text(document_id)
     prompt = f"""
-        **Prompt:**
-
         You are tasked with extracting specific information from the following text:
 
         ```
         <{text}>
         ```
 
-        Please follow these steps:
+        Please follow the steps below and fill in the table with the requested information:
 
-        1. **Identify the patient's name**: Look for phrases like "Patient Name:", "The patient is", or any context that introduces the patient’s name.
-        2. **Identify the patient's identifier**: This could be a CPF, RG, or other identifying numbers. Look for labels such as "CPF:", "RG:", or similar.
-        3. **Identify the doctor's name**: Search for phrases like "Doctor Name:", "The doctor is", or context that introduces the doctor's name.
-        4. **Identify the doctor's identifier**: This could include CPF, RG, council number, CRM, or other identifiers. Look for labels such as "Doctor's CPF:", "Doctor's CRM:", or similar.
-        5. **Identify the date of issuance**: Look for phrases like "Issued on:", "Date:", or any context that indicates the date of issuance.
+        1. **Patient's Name**: Look for phrases like "Patient Name:", "The patient is", or any context that introduces the patient's name.
+        2. **Patient's Identifier**: This could be a CPF, RG, or other identifying numbers. Look for labels such as "CPF:", "RG:", or similar.
+        3. **Doctor's Name**: Search for phrases like "Doctor's Name:", "The doctor is", or any context that introduces the doctor's name.
+        4. **Doctor's Identifier**: This could include CPF, RG, council number, CRM, or other identifiers. Look for labels such as "Doctor's CPF:", "Doctor's CRM:", or similar.
+        5. **Date of Issuance**: Look for phrases like "Issued on:", "Date:", or any context that indicates the date of issuance.
 
-        Please return **only** the following data in a structured format, without any additional information:
+        Please complete the table below with the extracted information:
 
-        - Patient Name: [Extracted Name]
-        - Patient Identifier: [Extracted Identifier]
-        - Doctor Name: [Extracted Name]
-        - Doctor Identifier: [Extracted Identifier]
-        - Date of Issuance: [Extracted Date]
+        | **Field**               | **Extracted Information**   |
+        |-------------------------|-----------------------------|
+        | Patient's Name          | [Extracted Name]            |
+        | Patient's Identifier    | [Extracted Identifier]      |
+        | Doctor's Name           | [Extracted Name]            |
+        | Doctor's Identifier     | [Extracted Identifier]      |
+        | Date of Issuance        | [Extracted Date]            |
+|
+        Return only the completed table with the extracted data.
         """  # noqa: E501
 
     model = Ollama(model='gemma2', temperature=0.0)
     text = model.invoke(prompt)
-    print(text)
 
     prompt = """
         ### Template:
         {
-            'PatientName': "",
-            'PatientIdentifier': "",
-            'DoctorName': "",
-            'DoctorIdentifier': "",
-            'DateOfIssuance': ""
+            'patient_name': "",
+            'patient_identifier': "",
+            'doctor_name': "",
+            'doctor_identifier': "",
+            'date_issuance': ""
         }
 
         ### Example:
         {
-            'PatientName': "Ana Oliveira",
-            'PatientIdentifier': "987.654.321-00",
-            'DoctorName': "Dr. João Silva",
-            'DoctorIdentifier': "CRM-12345",
-            'DateOfIssuance': "2024-10-11"
+            'patient_name': "Ana Oliveira",
+            'patient_identifier': "987.654.321-00",
+            'doctor_name': "Dr. João Silva",
+            'doctor_identifier': "12345",
+            'date_issuance': "2024-10-11"
         }
 
         ### Text:
@@ -91,58 +92,8 @@ def add_database_metadata(document_id):
     model = Ollama(model='nuextract', temperature=0.0)
     text = model.invoke(prompt)
 
-    print(text)
     metadata = parse_metadata(text)
-    metadata['PatientIdentifier'] = sanitize_text(
-        metadata['PatientIdentifier']
-    )
-    metadata['DoctorIdentifier'] = sanitize_text(metadata['DoctorIdentifier'])
-
-    with Connection() as conn:
-        SCRIPT_SQL = """
-            SELECT patient_id FROM patients WHERE identifier = %(PatientIdentifier)s;
-        """
-        registry = conn.select(SCRIPT_SQL, metadata)
-
-        if not registry:
-            SCRIPT_SQL = """
-                INSERT INTO patients (name, identifier)
-                VALUES (%(PatientName)s, %(PatientIdentifier)s)
-                RETURNING patient_id;
-            """
-            registry = conn.exec_with_result(SCRIPT_SQL, metadata)
-        patient_id = registry[0][0]
-
-        SCRIPT_SQL = """
-            SELECT doctor_id FROM doctors WHERE identifier = %(DoctorIdentifier)s;
-        """
-        doctor_id = conn.select(SCRIPT_SQL, metadata)
-
-        if not doctor_id:
-            SCRIPT_SQL = """
-                INSERT INTO doctors (name, identifier)
-                VALUES (%(DoctorName)s, %(DoctorIdentifier)s)
-                RETURNING doctor_id;
-            """
-            doctor_id = conn.exec_with_result(SCRIPT_SQL, metadata)
-        doctor_id = doctor_id[0][0]
-
-        SCRIPT_SQL = """
-            UPDATE documents
-            SET patient_id = %(patient_id)s,
-                doctor_id = %(doctor_id)s,
-                date_of_issuance = %(DateOfIssuance)s
-            WHERE document_id = %(document_id)s;
-            """
-        conn.exec(
-            SCRIPT_SQL,
-            {
-                'patient_id': patient_id,
-                'doctor_id': doctor_id,
-                'DateOfIssuance': metadata['DateOfIssuance'],
-                'document_id': document_id,
-            },
-        )
+    return metadata
 
 
 def sanitize_text(text):
