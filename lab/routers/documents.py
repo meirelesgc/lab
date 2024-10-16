@@ -26,7 +26,7 @@ def celery_add_database_text(document_id):
 
 @celery.task()
 def celery_add_database_metadata(document_id):
-    # dao_ollama.add_database_metadata(document_id)
+    dao_ollama.add_database_metadata(document_id)
     return {'message': 'Metadados Extraidos'}
 
 

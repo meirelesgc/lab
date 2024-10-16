@@ -2,7 +2,7 @@ import json
 import os
 
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.llms.ollama import Ollama
+from langchain_ollama import OllamaLLM
 from unidecode import unidecode
 
 from ..dao import Connection
@@ -17,7 +17,7 @@ def document_to_text(document_id):
 
     text = list()
     for document in documents:
-        text.append(document.page_content.replace('\n', ' '))
+        text.append(document.page_content)
 
     text = str(' ').join(text)
     return text
@@ -64,7 +64,7 @@ def add_database_metadata(document_id):
         Return only the completed table with the extracted data.
         """  # noqa: E501
 
-    model = Ollama(model='gemma2', temperature=0.0)
+    model = OllamaLLM(model='gemma2', temperature=0.0)
     text = model.invoke(prompt)
 
     prompt = """
@@ -89,10 +89,11 @@ def add_database_metadata(document_id):
         ### Text:
         """
     prompt += text
-    model = Ollama(model='nuextract', temperature=0.0)
+    model = OllamaLLM(model='nuextract', temperature=0.0)
     text = model.invoke(prompt)
 
     metadata = parse_metadata(text)
+    print(metadata)
     return metadata
 
 
@@ -102,31 +103,47 @@ def sanitize_text(text):
 
 
 def add_database_text(document_id):
-    text = document_to_text(document_id)
+    filename = f'{document_id}.pdf'
+    file_path = os.path.join('documents', filename)
 
-    prompt = f"""
-        Você é um especialista em segurança da informação. Preciso que ajuste um texto para cumprir a LGPD, trocando os dados sensíveis sem alterar outras informações assim como esta especificado abaixo.
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f'Arquivo {file_path} não encontrado.')
 
-        Substitua os dados no texto conforme as seguintes instruções:
+    document_loader = PyPDFLoader(file_path)
+    documents = document_loader.load()
 
-        - Datas: `<DATA>`
-        - Nomes de pessoas: `<NOME>`
-        - Nomes de instituições: `<NOME_ENTIDADE>`
-        - Qualquer forma de identificar médicos: `<MEDICO>`
-        - Códigos que identificam pessoas (CPF, RG, CRM): `<ID_PESSOA>`
-        - **Mantenha os sintomas no texto original. Não os remova ou modifique.**
+    prompts = {
+        '<DATA>': 'Remova qualquer data e substitua pelo token <DATA>.',
+        '<NOME>': 'Remova qualquer nome de pessoa e substitua pelo token <NOME>.',
+        '<NOME_ENTIDADE>': 'Remova qualquer nome de instituição e substitua pelo token <NOME_ENTIDADE>.',
+        '<MEDICO>': 'Remova qualquer nome ou identificação de médicos e substitua pelo token <MEDICO>.',
+        '<ID_PESSOA>': 'Remova qualquer código de identificação de pessoas (CPF, RG, CRM) e substitua pelo token <ID_PESSOA>.',
+    }
 
-        Coloque o texto entre as tags `<CleanText>`, sem comentários adicionais.
+    for document in documents:
+        for tag, prompt_instruction in prompts.items():
+            prompt = f"""
+                {document}
 
-        **Texto original a ser limpo:**
+                Utilize o texto anterior como referência. Não altere o formato ou conteúdo além do que for pedido.
 
-        ```
-        {text}
-        ```
-        """  # noqa: E501
+                {prompt_instruction}
 
-    model = Ollama(model='gemma2', temperature=0.0)
-    text = model.invoke(prompt)
+                **Exemplos:**
+
+                Antes: O paciente João da Silva, 35 anos, compareceu ao Hospital São Lucas no dia 12/03/2023 com queixas de dor abdominal.
+                Depois: O paciente <NOME>, 35 anos, compareceu ao <NOME_ENTIDADE> no dia <DATA> com queixas de dor abdominal.
+
+                **Observações:**
+
+                * **Se não encontrar elementos a serem substituídos, não faça nenhuma alteração.**
+                * **Mantenha os sintomas no texto original.**
+                * **Priorize a preservação da coesão e da legibilidade do texto.**
+                """
+
+            document.page_content = OllamaLLM(model='gemma2').invoke(prompt)
+
+    text = '\n'.join([document.page_content for document in documents])
 
     SCRIPT_SQL = """
         UPDATE documents

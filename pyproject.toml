@@ -6,20 +6,21 @@ authors = ["meirelesgc <geu_costa@outlook.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
-fastapi = {extras = ["standard"], version = "^0.112.2"}
-psycopg = {extras = ["binary"], version = "^3.2.1"}
-python-multipart = "^0.0.9"
+python = ">=3.12,<3.13"
+fastapi = {extras = ["standard"], version = "^0.115.2"}
+psycopg = {extras = ["binary"], version = "^3.2.3"}
+python-multipart = "^0.0.12"
 python-dotenv = "^1.0.1"
-langchain-community = "^0.2.14"
-pypdf = "^4.3.1"
-openai = "^1.43.0"
-tiktoken = "^0.7.0"
-celery = {extras = ["rabitmq"], version = "^5.4.0"}
+langchain-community = "^0.3.2"
+pypdf = "^5.0.1"
+openai = "^1.51.2"
+tiktoken = "^0.8.0"
+celery = "^5.4.0"
 flower = "^2.0.1"
 pydantic-settings = "^2.5.2"
 unidecode = "^1.3.8"
-
+unstructured = "^0.15.14"
+langchain-ollama = "^0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
