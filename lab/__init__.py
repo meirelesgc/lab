@@ -1,36 +1,11 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic_settings import BaseSettings
-
-
-class Settings(BaseSettings):
-    DATABASE: str
-    PG_USER: str
-    PASSWORD: str
-    HOST: str
-    PORT: str
-    OPENAI_API_KEY: str
-    BROKER: str
-
-    class Config:
-        env_file = '.env'
-        env_file_encoding = 'utf-8'
-
-
-settings = Settings()
-os.environ.update(settings.model_dump())
-
 
 from lab.routers import documents, openAI, parameters, patient  # noqa: E402
 
 app = FastAPI()
 
-origins = [
-    'http://localhost',
-    'http://localhost:5173',
-]
+origins = ['http://localhost', 'http://localhost:5173']
 
 app.add_middleware(
     CORSMiddleware,

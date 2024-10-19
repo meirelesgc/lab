@@ -1,16 +1,16 @@
-import os
-
 import psycopg
+
+from ..config import settings
 
 
 class Connection:
     def __init__(
         self,
-        database: str = os.getenv('DATABASE'),
-        user: str = os.getenv('PG_USER'),
-        password: str = os.getenv('PASSWORD'),
-        host: str = os.getenv('HOST'),
-        port: int = int(os.getenv('PORT')),
+        database: str = settings.DATABASE,
+        user: str = settings.PG_USER,
+        password: str = settings.PASSWORD,
+        host: str = settings.HOST,
+        port: int = settings.PORT,
     ):
         self.database = database
         self.user = user

@@ -6,15 +6,15 @@ from celery import Celery
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from lab.models import Document, JsonDocument, Message
+from lab.models import Document, Message
 
+from ..config import settings
 from ..dao import dao_documents, dao_ollama
 
 router = APIRouter(tags=['Documents'])
-
+'pyamqp://guest@localhost//'
 celery = Celery(
-    broker=os.getenv('BROKER', 'pyamqp://guest@localhost//'),
-    broker_connection_retry_on_startup=True,
+    broker=settings.BROKER, broker_connection_retry_on_startup=True
 )
 
 
@@ -26,12 +26,12 @@ def celery_add_database_text(document_id):
 
 @celery.task()
 def celery_add_database_metadata(document_id):
-    dao_ollama.add_database_metadata(document_id)
+    # dao_ollama.add_database_metadata(document_id)
     return {'message': 'Metadados Extraidos'}
 
 
 @router.post(
-    '/file', status_code=HTTPStatus.CREATED, response_model=list[JsonDocument]
+    '/file', status_code=HTTPStatus.CREATED, response_model=list[Document]
 )
 def upload_files(files: list[UploadFile] = File(...)):
     documents = []

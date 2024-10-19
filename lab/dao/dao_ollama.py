@@ -19,82 +19,122 @@ def document_to_text(document_id):
     for document in documents:
         text.append(document.page_content)
 
-    text = str(' ').join(text)
     return text
 
 
-def parse_metadata(string):
-    string = string.splitlines(keepends=False)
-    string = [line for line in string if '<|end-output|>' not in line]
-    cleaned_string = '\n'.join(string).strip().replace("'", '"')
+def parse_metadata(text):
+    print('!!!VALOR INICIAL!!!', text, '--' * 10)
+
     try:
-        metadata = json.loads(cleaned_string)
-        return metadata['Metadata']
-    except (json.JSONDecodeError, KeyError):
+        end = text.rfind('}')
+        start = text.rfind('{', 0, end)
+
+        if start != -1 and end != -1:
+            json_text = text[start : end + 1]
+            print(json_text.replace("'", '"'))
+            metadata_dict = json.loads(json_text.replace("'", '"'))
+            print('!!!VALOR FINAL!!!', metadata_dict)
+            return metadata_dict
+        else:
+            print('Chaves JSON não encontradas corretamente')
+            return None
+    except json.JSONDecodeError as e:
+        print(f'Erro ao converter JSON: {e}')
         return None
 
 
 def add_database_metadata(document_id):
     text = document_to_text(document_id)
+    text = str(' ').join(text)
+
     prompt = f"""
-        You are tasked with extracting specific information from the following text:
+You are tasked with extracting specific information from the following text:
 
-        ```
-        <{text}>
-        ```
+```
+<{text}>
+```
 
-        Please follow the steps below and fill in the table with the requested information:
+Please follow the steps below and fill in the table with the requested information:
 
-        1. **Patient's Name**: Look for phrases like "Patient Name:", "The patient is", or any context that introduces the patient's name.
-        2. **Patient's Identifier**: This could be a CPF, RG, or other identifying numbers. Look for labels such as "CPF:", "RG:", or similar.
-        3. **Doctor's Name**: Search for phrases like "Doctor's Name:", "The doctor is", or any context that introduces the doctor's name.
-        4. **Doctor's Identifier**: This could include CPF, RG, council number, CRM, or other identifiers. Look for labels such as "Doctor's CPF:", "Doctor's CRM:", or similar.
-        5. **Date of Issuance**: Look for phrases like "Issued on:", "Date:", or any context that indicates the date of issuance.
+1. **Patient's Name**: Look for phrases like "Patient Name:", "The patient is", or any context that introduces the patient's name.
+2. **Patient's Identifier**: This could be a CPF, RG, or other identifying numbers. Look for labels such as "CPF:", "RG:", or similar.
+3. **Doctor's Name**: Search for phrases like "Doctor's Name:", "The doctor is", or any context that introduces the doctor's name.
+4. **Doctor's Identifier**: This could include CPF, RG, council number, CRM, or other identifiers. Look for labels such as "Doctor's CPF:", "Doctor's CRM:", or similar.
+5. **Date of Issuance**: Look for phrases like "Issued on:", "Date:", or any context that indicates the date of issuance.
 
-        Please complete the table below with the extracted information:
+Please complete the table below with the extracted information:
 
-        | **Field**               | **Extracted Information**   |
-        |-------------------------|-----------------------------|
-        | Patient's Name          | [Extracted Name]            |
-        | Patient's Identifier    | [Extracted Identifier]      |
-        | Doctor's Name           | [Extracted Name]            |
-        | Doctor's Identifier     | [Extracted Identifier]      |
-        | Date of Issuance        | [Extracted Date]            |
+| **Field**               | **Extracted Information**   |
+|-------------------------|-----------------------------|
+| Patient's Name          | [Extracted Name]            |
+| Patient's Identifier    | [Extracted Identifier]      |
+| Doctor's Name           | [Extracted Name]            |
+| Doctor's Identifier     | [Extracted Identifier]      |
+| Date of Issuance        | [Extracted Date]            |
 |
-        Return only the completed table with the extracted data.
-        """  # noqa: E501
+Return only the completed table with the extracted data.
+"""  # noqa: E501
 
-    model = OllamaLLM(model='gemma2', temperature=0.0)
+    model = OllamaLLM(model='gemma2')
     text = model.invoke(prompt)
 
     prompt = """
-        ### Template:
-        {
-            'patient_name': "",
-            'patient_identifier': "",
-            'doctor_name': "",
-            'doctor_identifier': "",
-            'date_issuance': ""
-        }
+<|input|>
+### Template:
+{
+    "patient_name": "",
+    "patient_identifier": "",
+    "doctor_name": "",
+    "doctor_identifier": "",
+    "date_issuance": ""
+}
 
-        ### Example:
-        {
-            'patient_name': "Ana Oliveira",
-            'patient_identifier': "987.654.321-00",
-            'doctor_name': "Dr. João Silva",
-            'doctor_identifier': "12345",
-            'date_issuance': "2024-10-11"
-        }
+### Example:
+{
+    "patient_name": "Ana Oliveira",
+    "patient_identifier": "987.654.321-00",
+    "doctor_name": "Dr. João Silva",
+    "doctor_identifier": "12345",
+    "date_issuance": "2024-10-11"
+}
 
-        ### Text:
-        """
+### Text:
+"""
     prompt += text
-    model = OllamaLLM(model='nuextract', temperature=0.0)
+
+    model = OllamaLLM(model='nuextract')
     text = model.invoke(prompt)
 
     metadata = parse_metadata(text)
-    print(metadata)
-    return metadata
+    with Connection() as conn:
+        if metadata and metadata['patient_name']:
+            SCRIPT_SQL = """
+                SELECT patient_id, identifier
+                FROM public.patients
+                WHERE SIMILARITY(identifier, %(identifier)s) > 0.7
+                ORDER BY SIMILARITY(identifier, %(identifier)s) DESC
+                LIMIT 1;
+                """
+
+            similar_patient = conn.select(
+                SCRIPT_SQL, {'identifier': str(metadata)}
+            )
+
+            if similar_patient:
+                print(f'Paciente já existe com ID: {similar_patient[0]}')
+            else:
+                SCRIPT_SQL = """
+                    INSERT INTO public.patients
+                    (name, identifier)
+                    VALUES (%(name)s, %(identifier)s);
+                    """
+                conn.exec(
+                    SCRIPT_SQL,
+                    {
+                        'name': metadata['patient_name'],
+                        'identifier': str(metadata),
+                    },
+                )
 
 
 def sanitize_text(text):
@@ -103,48 +143,38 @@ def sanitize_text(text):
 
 
 def add_database_text(document_id):
-    filename = f'{document_id}.pdf'
-    file_path = os.path.join('documents', filename)
+    documents = document_to_text(document_id)
 
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f'Arquivo {file_path} não encontrado.')
-
-    document_loader = PyPDFLoader(file_path)
-    documents = document_loader.load()
-
-    prompts = {
-        '<DATA>': 'Remova qualquer data e substitua pelo token <DATA>.',
-        '<NOME>': 'Remova qualquer nome de pessoa e substitua pelo token <NOME>.',
-        '<NOME_ENTIDADE>': 'Remova qualquer nome de instituição e substitua pelo token <NOME_ENTIDADE>.',
-        '<MEDICO>': 'Remova qualquer nome ou identificação de médicos e substitua pelo token <MEDICO>.',
-        '<ID_PESSOA>': 'Remova qualquer código de identificação de pessoas (CPF, RG, CRM) e substitua pelo token <ID_PESSOA>.',
-    }
-
+    text = str()
     for document in documents:
-        for tag, prompt_instruction in prompts.items():
-            prompt = f"""
-                {document}
+        prompt = f"""
+            {document}
 
-                Utilize o texto anterior como referência. Não altere o formato ou conteúdo além do que for pedido.
+            Use the previous text as a reference. Do not change the format or content other than what is requested.
 
-                {prompt_instruction}
+            **Replacement Instructions:**
+            1. **Replacements to be made:**
+            - Remove any date and replace it with the <DATE> token.
+            - Remove any person's name and replace it with the <NAME> token.
+            - Remove any institution name and replace it with the <ENTITY_NAME> token.
+            - Remove any doctor's name or identification and replace it with the <DOCTOR> token.
+            - Remove any person's identification code (CPF, RG, CRM) and replace it with the <PERSON_ID> token.
 
-                **Exemplos:**
+            **Replacement Example:**
+            - Before: Patient João da Silva, 35 years old, went to Hospital São Lucas on 03/12/2023 with complaints of abdominal pain.
+            - After: Patient <NAME>, 35 years old, went to <ENTITY_NAME> on <DATE> with complaints of abdominal pain.
 
-                Antes: O paciente João da Silva, 35 anos, compareceu ao Hospital São Lucas no dia 12/03/2023 com queixas de dor abdominal.
-                Depois: O paciente <NOME>, 35 anos, compareceu ao <NOME_ENTIDADE> no dia <DATA> com queixas de dor abdominal.
+            **Important Notes:**
+            - If there are no elements to be replaced, do not make any changes.
+            - Keep the symptoms and clinical details in the original text.
+            - Prioritize preserving the cohesion and readability of the text during the replacement process.
 
-                **Observações:**
+            **Objective:**
+            The purpose of this prompt is to ensure the anonymization of sensitive data, while maintaining the integrity and clarity of the original text, allowing its use in analysis or training contexts without compromising privacy.
+            """
 
-                * **Se não encontrar elementos a serem substituídos, não faça nenhuma alteração.**
-                * **Mantenha os sintomas no texto original.**
-                * **Priorize a preservação da coesão e da legibilidade do texto.**
-                """
-
-            document.page_content = OllamaLLM(model='gemma2').invoke(prompt)
-
-    text = '\n'.join([document.page_content for document in documents])
-
+        text += OllamaLLM(model='gemma2').invoke(prompt)
+        print(text)
     SCRIPT_SQL = """
         UPDATE documents
         SET

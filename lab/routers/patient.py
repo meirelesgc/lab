@@ -1,7 +1,7 @@
 from http import HTTPStatus
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from lab.models import Message, Patient
 
@@ -23,6 +23,8 @@ def create_patient(name: str):
 @router.get('/patient', response_model=list[Patient])
 def consult_patients():
     patients = select_patients()
+    if not patients:
+        raise HTTPException(status_code=404, detail='File not found')
     return patients
 
 
