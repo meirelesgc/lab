@@ -64,7 +64,7 @@ def add_database_metadata(document_id):
         Return only the completed table with the extracted data.
         """  # noqa: E501
 
-    model = OllamaLLM(model='gemma2', temperature=0.0)
+    model = OllamaLLM(model='gemma2')
     text = model.invoke(prompt)
 
     prompt = """
@@ -88,12 +88,12 @@ def add_database_metadata(document_id):
 
         ### Text:
         """
+
     prompt += text
-    model = OllamaLLM(model='nuextract', temperature=0.0)
+    model = OllamaLLM(model='nuextract')
     text = model.invoke(prompt)
 
     metadata = parse_metadata(text)
-    print(metadata)
     return metadata
 
 
