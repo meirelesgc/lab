@@ -1,4 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TYPE pipeline_status AS ENUM ('STANDBY', 'IN-PROCESS', 'FAILED', 'DONE');
 CREATE TABLE IF NOT EXISTS parameters (
     parameter_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

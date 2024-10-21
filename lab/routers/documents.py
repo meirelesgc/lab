@@ -6,7 +6,7 @@ from celery import Celery
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from lab.models import Document, JsonDocument, Message
+from lab.models import Document, Message
 
 from ..dao import dao_documents, dao_ollama
 
@@ -31,7 +31,7 @@ def celery_add_database_metadata(document_id):
 
 
 @router.post(
-    '/file', status_code=HTTPStatus.CREATED, response_model=list[JsonDocument]
+    '/file', status_code=HTTPStatus.CREATED, response_model=list[Document]
 )
 def upload_files(files: list[UploadFile] = File(...)):
     documents = []
