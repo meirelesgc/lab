@@ -19,7 +19,6 @@ def document_to_text(document_id):
     for document in documents:
         text.append(document.page_content)
 
-    text = str(' ').join(text)
     return text
 
 
@@ -46,6 +45,8 @@ def parse_metadata(text):
 
 def add_database_metadata(document_id):
     text = document_to_text(document_id)
+    text = str(' ').join(text)
+
     prompt = f"""
 You are tasked with extracting specific information from the following text:
 
@@ -142,34 +143,38 @@ def sanitize_text(text):
 
 
 def add_database_text(document_id):
-    document = document_to_text(document_id)
-    print(document)
+    documents = document_to_text(document_id)
 
-    prompt = f"""
-{document}
+    text = str()
+    for document in documents:
+        prompt = f"""
+            {document}
 
-Utilize o texto anterior como referência. Não altere o formato ou conteúdo além do que for pedido.
+            Use the previous text as a reference. Do not change the format or content other than what is requested.
 
-<DATA> 'Remova qualquer data e substitua pelo token <DATA>.,
-<NOME> 'Remova qualquer nome de pessoa e substitua pelo token <NOME>.,
-<NOME_ENTIDADE 'Remova qualquer nome de instituição e substitua pelo token <NOME_ENTIDADE>.,
-<MEDICO>   'Remova qualquer nome ou identificação de médicos e substitua pelo token <MEDICO>.,
-<ID_PESSOA 'Remova qualquer código de identificação de pessoas (CPF, RG, CRM) e substitua pelo token <ID_PESSOA>.
+            **Replacement Instructions:**
+            1. **Replacements to be made:**
+            - Remove any date and replace it with the <DATE> token.
+            - Remove any person's name and replace it with the <NAME> token.
+            - Remove any institution name and replace it with the <ENTITY_NAME> token.
+            - Remove any doctor's name or identification and replace it with the <DOCTOR> token.
+            - Remove any person's identification code (CPF, RG, CRM) and replace it with the <PERSON_ID> token.
 
-**Exemplos:**
+            **Replacement Example:**
+            - Before: Patient João da Silva, 35 years old, went to Hospital São Lucas on 03/12/2023 with complaints of abdominal pain.
+            - After: Patient <NAME>, 35 years old, went to <ENTITY_NAME> on <DATE> with complaints of abdominal pain.
 
-Antes: O paciente João da Silva, 35 anos, compareceu ao Hospital São Lucas no dia 12/03/2023 com queixas de dor abdominal.
-Depois: O paciente <NOME>, 35 anos, compareceu ao <NOME_ENTIDADE> no dia <DATA> com queixas de dor abdominal.
+            **Important Notes:**
+            - If there are no elements to be replaced, do not make any changes.
+            - Keep the symptoms and clinical details in the original text.
+            - Prioritize preserving the cohesion and readability of the text during the replacement process.
 
-**Observações:**
+            **Objective:**
+            The purpose of this prompt is to ensure the anonymization of sensitive data, while maintaining the integrity and clarity of the original text, allowing its use in analysis or training contexts without compromising privacy.
+            """
 
-* **Se não encontrar elementos a serem substituídos, não faça nenhuma alteração.**
-* **Mantenha os sintomas no texto original.**
-* **Priorize a preservação da coesão e da legibilidade do texto.**
-"""
-
-    text = OllamaLLM(model='gemma2').invoke(prompt)
-
+        text += OllamaLLM(model='gemma2').invoke(prompt)
+        print(text)
     SCRIPT_SQL = """
         UPDATE documents
         SET
