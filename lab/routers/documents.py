@@ -12,45 +12,44 @@ from ..config import settings
 from ..dao import dao_documents, dao_ollama
 
 router = APIRouter(tags=['Documents'])
-'pyamqp://guest@localhost//'
+
 celery = Celery(
-    broker=settings.BROKER, broker_connection_retry_on_startup=True
+    broker=settings.BROKER,
+    broker_connection_retry_on_startup=True,
 )
 
 
 @celery.task()
 def celery_add_database_text(document_id):
     dao_ollama.add_database_text(document_id)
-    return {'message': 'Texto limpo'}
+    return {'message': f'Texto limpo \nID:{document_id}'}
 
 
 @celery.task()
 def celery_add_database_metadata(document_id):
-    # dao_ollama.add_database_metadata(document_id)
-    return {'message': 'Metadados Extraidos'}
+    dao_ollama.add_database_metadata(document_id)
+    return {'message': f'Metadados Extraidos \nID:{document_id}'}
 
 
 @router.post(
-    '/file', status_code=HTTPStatus.CREATED, response_model=list[Document]
+    '/file',
+    status_code=HTTPStatus.CREATED,
+    response_model=list[Document],
 )
 def upload_files(files: list[UploadFile] = File(...)):
     documents = []
 
     for file in files:
-        # Registrar que foi salvo e gerar um identificador
         document = dao_documents.add_database_document(file.filename)
 
-        # Salvar o arquivo localmente
         with open(f'documents/{document.document_id}.pdf', 'wb') as buffer:
             buffer.write(file.file.read())
 
-        # Etapa dois do registro
         celery_add_database_text.delay(document.document_id)
         celery_add_database_metadata.delay(document.document_id)
 
         documents.append(document)
 
-    # Concluir a operação
     return documents
 
 
@@ -69,7 +68,6 @@ def list_files():
 def get_file(document_id: UUID):
     file_path = f'documents/{document_id}.pdf'
 
-    # Verifica se o arquivo existe
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail='File not found')
 
@@ -83,11 +81,9 @@ def get_file(document_id: UUID):
 def delete_file(document_id: UUID):
     file_path = f'documents/{document_id}.pdf'
 
-    # Verifica se o arquivo existe
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail='File not found')
 
-    # Remove o arquivo
     dao_documents.delete_database_document(document_id)
     os.remove(file_path)
 

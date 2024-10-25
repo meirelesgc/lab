@@ -174,7 +174,9 @@ def add_database_text(document_id):
             """
 
         text += OllamaLLM(model='gemma2').invoke(prompt)
+
         print(text)
+
     SCRIPT_SQL = """
         UPDATE documents
         SET
