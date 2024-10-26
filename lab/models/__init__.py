@@ -36,7 +36,7 @@ class JsonDocument(BaseModel):
 
 class JsonDocumentResponse(JsonDocument):
     rating: int
-    evaluated_document_json: Dict
+    evaluated_document_json: Dict | None = {}
     created_at: datetime
 
 
@@ -44,7 +44,7 @@ class JsonDocumentEvaluation(BaseModel):
     document_id: UUID
     json_id: UUID
     rating: int
-    evaluated_document_json: Dict
+    evaluated_document_json: Dict | None = {}
 
 
 class Patient(BaseModel):

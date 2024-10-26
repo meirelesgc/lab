@@ -1,4 +1,5 @@
 import psycopg
+import psycopg.rows
 
 from ..config import settings
 
@@ -38,7 +39,7 @@ class Connection:
                 raise
 
     def select(self, script_sql: str, parameters: list = []):
-        with self.connection.cursor() as cursor:
+        with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:  # fmt: skip
             cursor.execute(script_sql, parameters)
             return cursor.fetchall()
 
@@ -48,7 +49,7 @@ class Connection:
             self.connection.commit()
 
     def exec_with_result(self, script_sql: str, parameters: list = []):
-        with self.connection.cursor() as cursor:
+        with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:  # fmt: skip
             cursor.execute(script_sql, parameters)
             self.connection.commit()
             return cursor.fetchone()

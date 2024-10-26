@@ -38,15 +38,7 @@ def list_database_documents() -> list[Document]:
 
     documents = []
     if registry:
-        for document_id, name, status, created_at in registry:
-            documents.append(
-                Document(
-                    document_id=document_id,
-                    name=name,
-                    status=status,
-                    created_at=created_at,
-                )
-            )
+        documents = [Document(**document) for document in registry]
     return documents
 
 
@@ -63,7 +55,7 @@ def select_llm_documents(document_id=None):
     SCRIPT_SQL = """
         SELECT document_id, document
         FROM documents
-        WHERE status = 'STANDBY'
+        WHERE status = 'STANDBY' OR status = 'DONE'
         """
 
     if document_id is not None:

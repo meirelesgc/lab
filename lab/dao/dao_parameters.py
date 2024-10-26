@@ -47,15 +47,8 @@ def list_database_parameters():
         """
     with Connection() as conn:
         registry = conn.select(SCRIPT_SQL)
-
+    print(registry)
     parameters = []
     if registry:
-        for parameter_id, parameter, synonyms in registry:
-            parameters.append(
-                Parameter(
-                    parameter_id=parameter_id,
-                    parameter=parameter,
-                    synonyms=synonyms or [],
-                )
-            )
+        parameters = [Parameter(**parameter) for parameter in registry]
     return parameters

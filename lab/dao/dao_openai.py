@@ -1,29 +1,33 @@
 import json
 import time
 from decimal import Decimal
+from uuid import UUID
 
 from openai import OpenAI
 
+from ..config import settings
 from ..dao import Connection
 from ..models import JsonDocument, JsonDocumentEvaluation, JsonDocumentResponse
 
 
 def parameters_list():
     SCRIPT_SQL = """
-    SELECT ARRAY_AGG(parameter) FROM parameters
+    SELECT ARRAY_AGG(parameter) as parameters FROM parameters
     """
 
     with Connection() as conn:
         registry = conn.select(SCRIPT_SQL)
-
-    return registry[0][0]
+    return registry[0]['parameters']
 
 
 def fetch_document(documents) -> list[JsonDocument]:
     parameters = '\n'.join(parameters_list())
 
     json_documents = []
-    for document_id, document in documents:
+    for doc in documents:
+        document_id = doc['document_id']
+        document = doc['document']
+
         json_document = JsonDocument(document_id=document_id)
 
         start_time = time.time()
@@ -57,7 +61,7 @@ def fetch_document(documents) -> list[JsonDocument]:
                     'processing_time': processing_time,
                 },
             )
-            json_document.document_json = registry[0]
+            json_document.document_json = registry['document_json']
         json_documents.append(json_document)
     return json_documents
 
@@ -81,7 +85,7 @@ def create_prompt(parameters, document):
 def structure_document(prompt):
     MODEL = 'gpt-4-turbo'
 
-    client = OpenAI()
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
     completion = client.chat.completions.create(
         model=MODEL,
         messages=[
@@ -122,56 +126,9 @@ def price_per_document(imput_tokens, output_tokens):
     return price
 
 
-def select_dopenai_json() -> list[JsonDocumentResponse]:
-    SCRIPT_SQL = """
-        SELECT
-            dopen.json_id,
-            dopen.document_id,
-            dopen.document_json,
-            dopen.rating,
-            dopen.evaluated_document_json,
-            dopen.created_at
-        FROM
-            public.documents_openai dopen
-            INNER JOIN (
-                SELECT
-                    document_id,
-                    MAX(created_at) AS latest_created_at
-                FROM
-                    public.documents_openai
-                GROUP BY
-                    document_id) AS subquery
-            ON dopen.document_id = subquery.document_id
-            AND dopen.created_at = subquery.latest_created_at;
-        """
-
-    with Connection() as conn:
-        registry = conn.select(SCRIPT_SQL)
-    json_documents = []
-    if registry:
-        for (
-            json_id,
-            document_id,
-            document_json,
-            rating,
-            evaluated_document_json,
-            created_at,
-        ) in registry:
-            json_documents.append(
-                JsonDocumentResponse(
-                    json_id=json_id,
-                    document_id=document_id,
-                    document_json=document_json,
-                    rating=rating,
-                    evaluated_document_json=evaluated_document_json or {},
-                    created_at=created_at,
-                )
-            )
-
-    return json_documents
-
-
-def select_single_dopenai_json(document_id) -> JsonDocumentResponse:
+def select_dopenai_json(
+    document_id: UUID = None,
+) -> list[JsonDocumentResponse]:
     SCRIPT_SQL = """
         SELECT
             dopen.json_id,
@@ -192,35 +149,16 @@ def select_single_dopenai_json(document_id) -> JsonDocumentResponse:
                     document_id) AS subquery
             ON dopen.document_id = subquery.document_id
             AND dopen.created_at = subquery.latest_created_at
-        WHERE
-            dopen.document_id = %(document_id)s;
         """
+    if document_id:
+        SCRIPT_SQL += 'WHERE dopen.document_id = %(document_id)s'
 
+    jsonDocuments = []
     with Connection() as conn:
-        registry = conn.select(SCRIPT_SQL, {'document_id': document_id})
-
-    json_documents = []
+        registry = conn.select(SCRIPT_SQL, {'document_id': document_id} if document_id else [])  # fmt: skip
     if registry:
-        for (
-            json_id,
-            document_id,  # noqa: PLR1704
-            document_json,
-            rating,
-            evaluated_document_json,
-            created_at,
-        ) in registry:
-            json_documents.append(
-                JsonDocumentResponse(
-                    json_id=json_id,
-                    document_id=document_id,
-                    document_json=document_json,
-                    rating=rating,
-                    evaluated_document_json=evaluated_document_json or {},
-                    created_at=created_at,
-                )
-            )
-
-    return json_documents[0]
+        jsonDocuments = [JsonDocumentResponse(**document) for document in registry]  # fmt: skip
+    return jsonDocuments
 
 
 def update_openai_json_documents(
