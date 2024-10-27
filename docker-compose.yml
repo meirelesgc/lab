@@ -12,6 +12,7 @@ services:
       - db-lab:/var/lib/postgresql/data
     networks:
         - 001-network
+
   ollama:
     image: ollama/ollama
     container_name: ollama-lab
@@ -19,12 +20,12 @@ services:
       - "11434:11434"
     volumes:
       - ollama-lab:/root/.ollama
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - capabilities: [gpu]
-    # runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    runtime: nvidia
     networks:
         - 001-network
 

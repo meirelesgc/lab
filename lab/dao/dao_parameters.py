@@ -1,14 +1,16 @@
 from uuid import UUID
 
 from ..dao import Connection
-from ..models import Parameter
+from ..models import BaseParameter, Parameter
 
 
-def add_database_parameter(parameter: Parameter) -> Parameter:
-    parameter = Parameter(parameter=parameter)
+def add_database_parameter(parameter: BaseParameter) -> Parameter:
+    parameter = Parameter(**parameter.model_dump())
+
     SCRIPT_SQL = """
-        INSERT INTO parameters (parameter_id, parameter)
-        VALUES (%(parameter_id)s, %(parameter)s)
+        INSERT INTO public.parameters(
+        parameter_id, parameter, synonyms)
+        VALUES (%(parameter_id)s, %(parameter)s, %(synonyms)s);
         """
 
     with Connection() as conn:
@@ -47,7 +49,6 @@ def list_database_parameters():
         """
     with Connection() as conn:
         registry = conn.select(SCRIPT_SQL)
-    print(registry)
     parameters = []
     if registry:
         parameters = [Parameter(**parameter) for parameter in registry]

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict
+from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -17,34 +17,18 @@ class Document(BaseModel):
 
 
 class DocumentMetadata(BaseModel):
-    document_id: UUID
-    patient_id: UUID
-    document_date: datetime
+    patient_id: Optional[int] = None
+    doctor_id: Optional[int] = None
+    document_date: Optional[datetime] = None
 
 
-class Parameter(BaseModel):
-    parameter_id: UUID = Field(default_factory=uuid4)
+class BaseParameter(BaseModel):
     parameter: str
     synonyms: list = []
 
 
-class JsonDocument(BaseModel):
-    json_id: UUID = Field(default_factory=uuid4)
-    document_id: UUID
-    document_json: Dict = {}
-
-
-class JsonDocumentResponse(JsonDocument):
-    rating: int
-    evaluated_document_json: Dict | None = {}
-    created_at: datetime
-
-
-class JsonDocumentEvaluation(BaseModel):
-    document_id: UUID
-    json_id: UUID
-    rating: int
-    evaluated_document_json: Dict | None = {}
+class Parameter(BaseParameter):
+    parameter_id: UUID = Field(default_factory=uuid4)
 
 
 class Patient(BaseModel):

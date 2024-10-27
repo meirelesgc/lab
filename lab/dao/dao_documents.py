@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from ..dao import Connection
 from ..models import Document
 
@@ -20,21 +22,30 @@ def add_database_document(filename: str) -> Document:
     return document
 
 
-def list_database_documents() -> list[Document]:
+def list_database_documents(document_id: UUID = None) -> list[Document]:
     SCRIPT_SQL = """
         SELECT
-            document_id,
-            name,
-            status,
-            created_at
+            doc.document_id,
+            doc.name,
+            doc.status,
+            doc.created_at
         FROM
-            documents
+            documents doc
+        {FILTER}
         ORDER BY
-            status,
-            created_at 	DESC;
+            doc.status,
+            doc.created_at DESC;
         """
+
+    FILTER = str()
+    if document_id is not None:
+        FILTER = 'WHERE document_id = %(document_id)s'
+
     with Connection() as conn:
-        registry = conn.select(SCRIPT_SQL)
+        registry = conn.select(
+            SCRIPT_SQL.format(FILTER=FILTER),
+            {'document_id': document_id} if document_id else [],
+        )
 
     documents = []
     if registry:

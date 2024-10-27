@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
-from lab.models import Message, Parameter
+from lab.models import BaseParameter, Message, Parameter
 
 from ..dao.dao_parameters import (
     add_database_parameter,
@@ -20,7 +20,7 @@ router = APIRouter(tags=['Parameters'])
     response_model=Parameter,
     status_code=HTTPStatus.CREATED,
 )
-def create_parameter(parameter: str):
+def create_parameter(parameter: BaseParameter):
     parameter = add_database_parameter(parameter)
     return parameter
 

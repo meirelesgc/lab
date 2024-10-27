@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from lab.routers import documents, openAI, parameters, patient  # noqa: E402
+from lab.routers import documents, ollama, parameters, patient
 
 app = FastAPI()
 
@@ -15,7 +15,7 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-app.include_router(openAI.router)
+app.include_router(ollama.router)
 app.include_router(documents.router)
 app.include_router(parameters.router)
 app.include_router(patient.router)

@@ -20,11 +20,10 @@ def select_patients():
         """
     with Connection() as conn:
         registry = conn.select(SCRIPT_SQL)
-    patient_list = []
+    patients = []
     if registry:
-        for patient_id, name in registry:
-            patient_list.append(Patient(patient_id=patient_id, name=name))
-    return patient_list
+        patients = [Patient(**patient) for patient in registry]
+    return patients
 
 
 def delete_patient(patient_id):

@@ -1,189 +1,194 @@
 import json
-import os
+from datetime import datetime
+from uuid import UUID
 
+from langchain.schema.document import Document
+from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_ollama import OllamaLLM
-from unidecode import unidecode
+from langchain_ollama import OllamaEmbeddings
+from langchain_ollama.llms import OllamaLLM
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ..dao import Connection
+from ..prompts import (
+    DATE_METADATA_EXAMPLE,
+    DATE_METADATA_SCHEMA,
+    PATIENT_METADATA_EXAMPLE,
+    PATIENT_METADATA_SCHEMA,
+)
+
+CHROMA_PATH = 'chroma'
 
 
-def document_to_text(document_id):
-    filename = f'{document_id}.pdf'
-    file_path = os.path.join('documents', filename)
-
-    document_loader = PyPDFLoader(file_path)
-    documents = document_loader.load()
-
-    text = list()
-    for document in documents:
-        text.append(document.page_content)
-
-    return text
+def load_documents(document_id: UUID):
+    document_loader = PyPDFLoader(f'documents/{document_id}.pdf')
+    return document_loader.load()
 
 
-def parse_metadata(text):
-    print('!!!VALOR INICIAL!!!', text, '--' * 10)
+def split_documents(document: list[Document]):
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=80,
+        length_function=len,
+        is_separator_regex=False,
+    )
+    return text_splitter.split_documents(document)
 
-    try:
-        end = text.rfind('}')
-        start = text.rfind('{', 0, end)
 
-        if start != -1 and end != -1:
-            json_text = text[start : end + 1]
-            print(json_text.replace("'", '"'))
-            metadata_dict = json.loads(json_text.replace("'", '"'))
-            print('!!!VALOR FINAL!!!', metadata_dict)
-            return metadata_dict
+def get_embedding_function():
+    embeddings = OllamaEmbeddings(model='all-minilm:33m')
+    return embeddings
+
+
+def get_chroma():
+    return Chroma(
+        persist_directory=CHROMA_PATH,
+        embedding_function=get_embedding_function(),
+    )
+
+
+def embed_document(document_id):
+    document = load_documents(document_id)
+    chunks = split_documents(document)
+    add_to_chroma(chunks)
+
+
+def add_to_chroma(chunks: list[Document]):
+    new_chunk_ids = list()
+
+    db = get_chroma()
+    chunks = index_chunks(chunks)
+    if len(chunks):
+        new_chunk_ids = [chunk.metadata['id'] for chunk in chunks]
+        db.add_documents(chunks, ids=new_chunk_ids)
+
+
+def index_chunks(chunks):
+    last_page_id = None
+    current_chunk_index = 0
+
+    for chunk in chunks:
+        source = chunk.metadata.get('source')
+        page = chunk.metadata.get('page')
+        current_page_id = f'{source}:{page}'
+
+        if current_page_id == last_page_id:
+            current_chunk_index += 1
         else:
-            print('Chaves JSON não encontradas corretamente')
-            return None
-    except json.JSONDecodeError as e:
-        print(f'Erro ao converter JSON: {e}')
-        return None
+            current_chunk_index = 0
+
+        chunk_id = f'{current_page_id}:{current_chunk_index}'
+        last_page_id = current_page_id
+
+        chunk.metadata['id'] = chunk_id
+
+    return chunks
 
 
-def add_database_metadata(document_id):
-    text = document_to_text(document_id)
-    text = str(' ').join(text)
+def remove_from_chroma(document_id: UUID):
+    db = get_chroma()
+    existing_items = db.get(include=[])
+    ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
+    db.delete(ids=ids)
 
-    prompt = f"""
-You are tasked with extracting specific information from the following text:
 
-```
-<{text}>
-```
-
-Please follow the steps below and fill in the table with the requested information:
-
-1. **Patient's Name**: Look for phrases like "Patient Name:", "The patient is", or any context that introduces the patient's name.
-2. **Patient's Identifier**: This could be a CPF, RG, or other identifying numbers. Look for labels such as "CPF:", "RG:", or similar.
-3. **Doctor's Name**: Search for phrases like "Doctor's Name:", "The doctor is", or any context that introduces the doctor's name.
-4. **Doctor's Identifier**: This could include CPF, RG, council number, CRM, or other identifiers. Look for labels such as "Doctor's CPF:", "Doctor's CRM:", or similar.
-5. **Date of Issuance**: Look for phrases like "Issued on:", "Date:", or any context that indicates the date of issuance.
-
-Please complete the table below with the extracted information:
-
-| **Field**               | **Extracted Information**   |
-|-------------------------|-----------------------------|
-| Patient's Name          | [Extracted Name]            |
-| Patient's Identifier    | [Extracted Identifier]      |
-| Doctor's Name           | [Extracted Name]            |
-| Doctor's Identifier     | [Extracted Identifier]      |
-| Date of Issuance        | [Extracted Date]            |
-|
-Return only the completed table with the extracted data.
-"""  # noqa: E501
-
-    model = OllamaLLM(model='gemma2')
-    text = model.invoke(prompt)
-
-    prompt = """
-<|input|>
-### Template:
-{
-    "patient_name": "",
-    "patient_identifier": "",
-    "doctor_name": "",
-    "doctor_identifier": "",
-    "date_issuance": ""
-}
-
-### Example:
-{
-    "patient_name": "Ana Oliveira",
-    "patient_identifier": "987.654.321-00",
-    "doctor_name": "Dr. João Silva",
-    "doctor_identifier": "12345",
-    "date_issuance": "2024-10-11"
-}
-
-### Text:
-"""
-    prompt += text
-
+def get_date(document_id: UUID):
     model = OllamaLLM(model='nuextract')
-    text = model.invoke(prompt)
-
-    metadata = parse_metadata(text)
-    with Connection() as conn:
-        if metadata and metadata['patient_name']:
-            SCRIPT_SQL = """
-                SELECT patient_id, identifier
-                FROM public.patients
-                WHERE SIMILARITY(identifier, %(identifier)s) > 0.7
-                ORDER BY SIMILARITY(identifier, %(identifier)s) DESC
-                LIMIT 1;
-                """
-
-            similar_patient = conn.select(
-                SCRIPT_SQL, {'identifier': str(metadata)}
-            )
-
-            if similar_patient:
-                print(f'Paciente já existe com ID: {similar_patient[0]}')
-            else:
-                SCRIPT_SQL = """
-                    INSERT INTO public.patients
-                    (name, identifier)
-                    VALUES (%(name)s, %(identifier)s);
-                    """
-                conn.exec(
-                    SCRIPT_SQL,
-                    {
-                        'name': metadata['patient_name'],
-                        'identifier': str(metadata),
-                    },
-                )
+    metadata = ['data', 'data registro', 'data atendimento', 'data exame', '1 de Janeiro de 2024', 'Jan 1, 2024', '01/01/2024', '2024/01/01']  # fmt: skip
+    chunks = search_chunks(document_id, metadata)
+    for _, chunk in enumerate(chunks.values()):
+        prompt = create_context(
+            chunk,
+            schema=DATE_METADATA_SCHEMA,
+            example=DATE_METADATA_EXAMPLE,
+        )
+        date = model.invoke(prompt)
+        try:
+            date = date.strip().split('<|end-output|>')
+            date = json.loads(date[0])
+            if date := date.get('date', None):
+                date = datetime.strptime(date, '%d/%m/%Y')
+                with Connection() as conn:
+                    date = {'date': date, 'document_id': document_id}
+                    SCRIPT_SQL = """
+                        UPDATE documents
+                        SET document_date = %(date)s
+                        WHERE document_id = %(document_id)s;
+                        """
+                    conn.exec(SCRIPT_SQL, date)
+                    print('Cheguei até aqui')
+                    break
+        except json.JSONDecodeError:
+            print('Error parsing JSON string:')
 
 
-def sanitize_text(text):
-    text = unidecode(text)
-    return ''.join(char for char in text if char.isalnum())
+def get_patient(document_id: UUID):
+    model = OllamaLLM(model='nuextract')
+
+    metadata = ['nome', 'paciente', 'identificação', 'cliente', 'usuario', 'registro', 'indivíduo', 'pessoa', 'identidade', 'perfil', 'sujeito', 'nome_completo', 'dados_pessoais']  # fmt: skip
+    chunks = search_chunks(document_id, metadata)
+
+    for _, chunk in enumerate(chunks.values()):
+        prompt = create_context(
+            chunk,
+            schema=PATIENT_METADATA_SCHEMA,
+            example=PATIENT_METADATA_EXAMPLE,
+        )
+        user_data = model.invoke(prompt)
+        try:
+            user_data = user_data.strip().split('<|end-output|>')
+            user_data = json.loads(user_data[0])
+            if name := user_data.get('name', None):
+                with Connection() as conn:
+                    SCRIPT_SQL = """
+                        SELECT patient_id
+                        FROM patients
+                        WHERE COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) > 0.4
+                        ORDER BY COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) DESC
+                        LIMIT 1;
+                        """
+                    patient = {'name': name, 'identifier': str(user_data)}
+                    registry = conn.select(SCRIPT_SQL, patient)
+                    if not registry:
+                        SCRIPT_SQL = """
+                            INSERT INTO patients (name, identifier)
+                            VALUES (%(name)s, %(identifier)s)
+                            RETURNING patient_id;
+                            """
+                        registry = [conn.exec_with_result(SCRIPT_SQL, patient)]
+                    SCRIPT_SQL = """
+                        UPDATE documents
+                        SET unverified_patient = unverified_patient || %(patient_id)s
+                        WHERE document_id = %(document_id)s;
+                        """
+                    conn.exec(
+                        SCRIPT_SQL,
+                        {
+                            'patient_id': registry[0].get('patient_id'),
+                            'document_id': document_id,
+                        },
+                    )
+        except json.JSONDecodeError:
+            print('Error parsing JSON string:')
 
 
-def add_database_text(document_id):
-    documents = document_to_text(document_id)
+def search_chunks(document_id, vocabulary):
+    db = get_chroma()
 
-    text = str()
-    for document in documents:
-        prompt = f"""
-            {document}
+    chunks = {}
+    for data in vocabulary:
+        source = {'source': f'documents/{document_id}.pdf'}
+        results = db.similarity_search_with_score(data, k=1, filter=source)
 
-            Use the previous text as a reference. Do not change the format or content other than what is requested.
+        for doc, _score in results:
+            doc_id = doc.metadata.get('id', None)
+            if doc_id not in chunks:
+                chunks[doc_id] = doc.page_content
+    return chunks
 
-            **Replacement Instructions:**
-            1. **Replacements to be made:**
-            - Remove any date and replace it with the <DATE> token.
-            - Remove any person's name and replace it with the <NAME> token.
-            - Remove any institution name and replace it with the <ENTITY_NAME> token.
-            - Remove any doctor's name or identification and replace it with the <DOCTOR> token.
-            - Remove any person's identification code (CPF, RG, CRM) and replace it with the <PERSON_ID> token.
 
-            **Replacement Example:**
-            - Before: Patient João da Silva, 35 years old, went to Hospital São Lucas on 03/12/2023 with complaints of abdominal pain.
-            - After: Patient <NAME>, 35 years old, went to <ENTITY_NAME> on <DATE> with complaints of abdominal pain.
-
-            **Important Notes:**
-            - If there are no elements to be replaced, do not make any changes.
-            - Keep the symptoms and clinical details in the original text.
-            - Prioritize preserving the cohesion and readability of the text during the replacement process.
-
-            **Objective:**
-            The purpose of this prompt is to ensure the anonymization of sensitive data, while maintaining the integrity and clarity of the original text, allowing its use in analysis or training contexts without compromising privacy.
-            """
-
-        text += OllamaLLM(model='gemma2').invoke(prompt)
-
-        print(text)
-
-    SCRIPT_SQL = """
-        UPDATE documents
-        SET
-            document = %(document)s,
-            status = 'STANDBY'
-        WHERE document_id = %(document_id)s;
-        """
-
-    with Connection() as conn:
-        conn.exec(SCRIPT_SQL, {'document': text, 'document_id': document_id})
+# fmt: off
+def create_context(text, schema, example=['', '', '']):
+    prompt = f'<|input|>\n### Template:\n{json.dumps(json.loads(schema), indent=4)}\n'
+    prompt += ''.join(f'### Example:\n{json.dumps(json.loads(i), indent=4)}\n' for i in example if i)
+    return prompt + f'### Text:\n{text}\n<|output|>\n'
