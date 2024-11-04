@@ -1,22 +1,27 @@
 import json
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from langchain.schema.document import Document
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_core.documents import Document
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import PromptTemplate
 from langchain_ollama import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
+from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pydantic import create_model
 
-from ..dao import Connection
+from ..config import settings
+from ..dao import Connection, dao_parameters
 from ..prompts import (
     CLEAR_TEXT_PROMPT,
     DATE_METADATA_EXAMPLE,
     DATE_METADATA_SCHEMA,
     PATIENT_METADATA_EXAMPLE,
     PATIENT_METADATA_SCHEMA,
+    TEMPLATE,
 )
 
 CHROMA_PATH = 'chroma'
@@ -111,7 +116,6 @@ def get_date(document_id: UUID):
             date = date.strip().split('<|end-output|>')
             date = json.loads(date[0])
             if date := date.get('date', None):
-                print(date)
                 date = datetime.strptime(date, '%d/%m/%Y')
                 with Connection() as conn:
                     date = {'date': date, 'document_id': document_id}
@@ -121,8 +125,9 @@ def get_date(document_id: UUID):
                         WHERE document_id = %(document_id)s;
                         """
                     conn.exec(SCRIPT_SQL, date)
-                    print('Cheguei até aqui')
                     break
+        except ValueError:
+            print('Error parsing date')
         except json.JSONDecodeError:
             print('Error parsing JSON string:')
 
@@ -199,23 +204,59 @@ def clear_text(document_id):
     source = {'source': f'documents/{document_id}.pdf'}
     result = db.get(where=source)
 
+    content = list()
     result = zip(result['ids'], result['documents'], result['metadatas'])
     for doc_id, page_content, metadata in result:
         prompt = CLEAR_TEXT_PROMPT.format(content=page_content)
         clean_content = model.invoke(prompt)
+        content.append(clean_content)
         new_doc = Document(page_content=clean_content, metadata=metadata)
         db.update_document(document_id=doc_id, document=new_doc)
 
     with Connection() as conn:
         SCRIPT_SQL = """
             UPDATE documents SET
-            status = 'STANDBY'
+            status = 'STANDBY',
+            document = %(text)s
             WHERE document_id = %(document_id)s;
             """
-        conn.exec(SCRIPT_SQL, {'document_id': document_id})
+        conn.exec(
+            SCRIPT_SQL,
+            {'document_id': document_id, 'text': '\n\n---\n\n'.join(content)},
+        )
 
 
 def create_context(text, schema, example=['', '', '']):
     prompt = f'<|input|>\n### Template:\n{json.dumps(json.loads(schema), indent=4)}\n'
     prompt += ''.join(f'### Example:\n{json.dumps(json.loads(i), indent=4)}\n' for i in example if i)  # fmt: skip
     return prompt + f'### Text:\n{text}\n<|output|>\n'
+
+
+def extract_data(document_id):
+    model = ChatOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    for parameter in dao_parameters.list_database_parameters():
+        vocabulary = parameter.synonyms + [parameter.parameter]
+        chunks = search_chunks(document_id, vocabulary)
+
+        fields = {parameter.parameter: (str, ...)}  # fmt: skip
+        ExtractData = create_model('ExtractData', **fields)
+
+        print(ExtractData.schema())
+
+        parser = JsonOutputParser(pydantic_object=ExtractData)
+        prompt = PromptTemplate(
+            template=TEMPLATE,
+            input_variables=['query'],
+            partial_variables={
+                'format_instructions': parser.get_format_instructions()
+            },
+        )
+
+        chain = prompt | model | parser
+
+        context = '\n\n---\n\n'.join(chunks.values())
+
+        print(chain.invoke({'query': context}))
+
+    return {'document_id': uuid4(), 'document_json': {}}

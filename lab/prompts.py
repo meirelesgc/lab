@@ -84,3 +84,11 @@ Preserve os sintomas e detalhes clínicos do texto original.
 Priorize a coesão e legibilidade do texto durante a substituição.
 Manter a integridade e clareza do texto original para análise ou formação
 """
+
+TEMPLATE = """
+You're a helpful assistant that extracts and structures information in JSON from unstructured text.
+
+{format_instructions}
+
+{query}
+"""
