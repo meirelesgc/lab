@@ -5,12 +5,14 @@ from uuid import UUID
 from langchain.schema.document import Document
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ..dao import Connection
 from ..prompts import (
+    CLEAR_TEXT_PROMPT,
     DATE_METADATA_EXAMPLE,
     DATE_METADATA_SCHEMA,
     PATIENT_METADATA_EXAMPLE,
@@ -87,6 +89,7 @@ def index_chunks(chunks):
 
 def remove_from_chroma(document_id: UUID):
     db = get_chroma()
+
     existing_items = db.get(include=[])
     ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
     db.delete(ids=ids)
@@ -94,6 +97,7 @@ def remove_from_chroma(document_id: UUID):
 
 def get_date(document_id: UUID):
     model = OllamaLLM(model='nuextract')
+
     metadata = ['data', 'data registro', 'data atendimento', 'data exame', '1 de Janeiro de 2024', 'Jan 1, 2024', '01/01/2024', '2024/01/01']  # fmt: skip
     chunks = search_chunks(document_id, metadata)
     for _, chunk in enumerate(chunks.values()):
@@ -107,6 +111,7 @@ def get_date(document_id: UUID):
             date = date.strip().split('<|end-output|>')
             date = json.loads(date[0])
             if date := date.get('date', None):
+                print(date)
                 date = datetime.strptime(date, '%d/%m/%Y')
                 with Connection() as conn:
                     date = {'date': date, 'document_id': document_id}
@@ -187,8 +192,30 @@ def search_chunks(document_id, vocabulary):
     return chunks
 
 
-# fmt: off
+def clear_text(document_id):
+    db = get_chroma()
+    model = OllamaLLM(model='gemma2')
+
+    source = {'source': f'documents/{document_id}.pdf'}
+    result = db.get(where=source)
+
+    result = zip(result['ids'], result['documents'], result['metadatas'])
+    for doc_id, page_content, metadata in result:
+        prompt = CLEAR_TEXT_PROMPT.format(content=page_content)
+        clean_content = model.invoke(prompt)
+        new_doc = Document(page_content=clean_content, metadata=metadata)
+        db.update_document(document_id=doc_id, document=new_doc)
+
+    with Connection() as conn:
+        SCRIPT_SQL = """
+            UPDATE documents SET
+            status = 'STANDBY'
+            WHERE document_id = %(document_id)s;
+            """
+        conn.exec(SCRIPT_SQL, {'document_id': document_id})
+
+
 def create_context(text, schema, example=['', '', '']):
     prompt = f'<|input|>\n### Template:\n{json.dumps(json.loads(schema), indent=4)}\n'
-    prompt += ''.join(f'### Example:\n{json.dumps(json.loads(i), indent=4)}\n' for i in example if i)
+    prompt += ''.join(f'### Example:\n{json.dumps(json.loads(i), indent=4)}\n' for i in example if i)  # fmt: skip
     return prompt + f'### Text:\n{text}\n<|output|>\n'

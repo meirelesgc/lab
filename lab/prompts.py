@@ -57,3 +57,30 @@ DATE_EX3 = """
 """
 
 DATE_METADATA_EXAMPLE = [DATE_EX1, DATE_EX2, DATE_EX3]
+
+CLEAR_TEXT_PROMPT = """
+{content}
+
+---
+
+Utilize o texto acima como referência, sem modificar o formato ou conteúdo além do solicitado.
+
+Instruções de Substituição:
+
+Substituições a serem realizadas:
+Remova datas e substitua pelo token <DATE>.
+Remova nomes de pessoas e substitua pelo token <NOME>.
+Remova nomes de instituições e substitua pelo token <ENTITY_NAME>.
+Remova identificações de médicos e substitua pelo token <DOCTOR>.
+Remova códigos de identificação de pessoas (CPF, RG, CRM) e substitua pelo token <PERSON_ID>.
+
+Exemplo de Substituição:
+Antes: Paciente João da Silva, 35 anos, deu entrada no Hospital São Lucas no dia 12/03/2023 com queixa de dores abdominais.
+Depois: Paciente <NOME>, 35 anos, procurou <ENTITY_NAME> em <DATE> com queixa de dor abdominal.
+
+Notas Importantes:
+Se não houver elementos a serem substituídos, mantenha o texto inalterado.
+Preserve os sintomas e detalhes clínicos do texto original.
+Priorize a coesão e legibilidade do texto durante a substituição.
+Manter a integridade e clareza do texto original para análise ou formação
+"""
