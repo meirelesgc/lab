@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from lab.routers import documents, ollama, openAI, parameters, patient
+from lab.routers import documents, ollama, parameters, patient
 
 app = FastAPI()
 
@@ -19,4 +19,3 @@ app.include_router(ollama.router)
 app.include_router(documents.router)
 app.include_router(parameters.router)
 app.include_router(patient.router)
-app.include_router(openAI.router)

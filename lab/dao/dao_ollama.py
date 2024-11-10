@@ -1,28 +1,18 @@
 import json
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from langchain.schema.document import Document
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_ollama import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pydantic import create_model
 
+from .. import prompts
 from ..config import settings
 from ..dao import Connection, dao_parameters
-from ..prompts import (
-    CLEAR_TEXT_PROMPT,
-    DATE_METADATA_EXAMPLE,
-    DATE_METADATA_SCHEMA,
-    PATIENT_METADATA_EXAMPLE,
-    PATIENT_METADATA_SCHEMA,
-    TEMPLATE,
-)
 
 CHROMA_PATH = 'chroma'
 
@@ -43,7 +33,7 @@ def split_documents(document: list[Document]):
 
 
 def get_embedding_function():
-    embeddings = OllamaEmbeddings(model='all-minilm:33m')
+    embeddings = OllamaEmbeddings(model='mxbai-embed-large:latest')
     return embeddings
 
 
@@ -108,8 +98,8 @@ def get_date(document_id: UUID):
     for _, chunk in enumerate(chunks.values()):
         prompt = create_context(
             chunk,
-            schema=DATE_METADATA_SCHEMA,
-            example=DATE_METADATA_EXAMPLE,
+            schema=prompts.DATE_METADATA_SCHEMA,
+            example=prompts.DATE_METADATA_EXAMPLE,
         )
         date = model.invoke(prompt)
         try:
@@ -138,11 +128,11 @@ def get_patient(document_id: UUID):
     metadata = ['nome', 'paciente', 'identificação', 'cliente', 'usuario', 'registro', 'indivíduo', 'pessoa', 'identidade', 'perfil', 'sujeito', 'nome_completo', 'dados_pessoais']  # fmt: skip
     chunks = search_chunks(document_id, metadata)
 
-    for _, chunk in enumerate(chunks.values()):
+    for chunk in chunks.values():
         prompt = create_context(
             chunk,
-            schema=PATIENT_METADATA_SCHEMA,
-            example=PATIENT_METADATA_EXAMPLE,
+            schema=prompts.PATIENT_METADATA_SCHEMA,
+            example=prompts.PATIENT_METADATA_EXAMPLE,
         )
         user_data = model.invoke(prompt)
         try:
@@ -182,19 +172,35 @@ def get_patient(document_id: UUID):
             print('Error parsing JSON string:')
 
 
-def search_chunks(document_id, vocabulary):
+def search_chunks(document_id, parameter):
     db = get_chroma()
+    source = {'source': f'documents/{document_id}.pdf'}
 
     chunks = {}
-    for data in vocabulary:
-        source = {'source': f'documents/{document_id}.pdf'}
-        results = db.similarity_search_with_score(data, k=1, filter=source)
+    chunk_score = {}
+    chunk_recorency = {}
 
-        for doc, _score in results:
-            doc_id = doc.metadata.get('id', None)
+    vocabulary = parameter.synonyms + [parameter.parameter]
+    for data in vocabulary:
+        results = db.similarity_search_with_score(data, k=3, filter=source)
+
+        for doc, score in results:
+            doc_id = doc.metadata.get('id')
+            if doc_id is None:
+                continue
+
             if doc_id not in chunks:
                 chunks[doc_id] = doc.page_content
-    return chunks
+                chunk_score[doc_id] = score
+                chunk_recorency[doc_id] = 1
+            else:
+                chunk_score[doc_id] += score
+                chunk_recorency[doc_id] += 1
+
+    scores = {doc_id: chunk_score[doc_id] / chunk_recorency[doc_id] for doc_id in chunks}  # fmt: skip
+    top_chunks = sorted(scores, key=scores.get, reverse=True)[:3]
+
+    return {doc_id: chunks[doc_id] for doc_id in top_chunks}
 
 
 def clear_text(document_id):
@@ -207,7 +213,7 @@ def clear_text(document_id):
     content = list()
     result = zip(result['ids'], result['documents'], result['metadatas'])
     for doc_id, page_content, metadata in result:
-        prompt = CLEAR_TEXT_PROMPT.format(content=page_content)
+        prompt = prompts.CLEAR_TEXT_PROMPT.format(content=page_content)
         clean_content = model.invoke(prompt)
         content.append(clean_content)
         new_doc = Document(page_content=clean_content, metadata=metadata)
@@ -234,29 +240,16 @@ def create_context(text, schema, example=['', '', '']):
 
 def extract_data(document_id):
     model = ChatOpenAI(api_key=settings.OPENAI_API_KEY)
-
+    chunk_reference = {}
+    chunks = {}
     for parameter in dao_parameters.list_database_parameters():
-        vocabulary = parameter.synonyms + [parameter.parameter]
-        chunks = search_chunks(document_id, vocabulary)
+        result = search_chunks(document_id, parameter)
+        for chunk_id, content in result.items():
+            if chunk_id not in chunk_reference:
+                chunk_reference[chunk_id] = []
+            chunk_reference[chunk_id].append(parameter)
+        chunks.update(result)
 
-        fields = {parameter.parameter: (str, ...)}  # fmt: skip
-        ExtractData = create_model('ExtractData', **fields)
-
-        print(ExtractData.schema())
-
-        parser = JsonOutputParser(pydantic_object=ExtractData)
-        prompt = PromptTemplate(
-            template=TEMPLATE,
-            input_variables=['query'],
-            partial_variables={
-                'format_instructions': parser.get_format_instructions()
-            },
-        )
-
-        chain = prompt | model | parser
-
-        context = '\n\n---\n\n'.join(chunks.values())
-
-        print(chain.invoke({'query': context}))
-
-    return {'document_id': uuid4(), 'document_json': {}}
+    for key, value in chunks.items():
+        ...
+    return chunk_reference

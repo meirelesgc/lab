@@ -2,10 +2,10 @@ import os
 from http import HTTPStatus
 from uuid import UUID
 
-from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from lab.models import Document, DocumentMetadata, Message
+from lab.models import Document, Message
 
 from ..celery import celery
 from ..dao import dao_documents, dao_ollama
@@ -16,19 +16,20 @@ router = APIRouter(tags=['Documents'])
 @celery.task()
 def celery_add_database_document(document_id):
     dao_ollama.embed_document(document_id)
-    dao_ollama.get_patient(document_id)
-    dao_ollama.get_date(document_id)
-    dao_ollama.clear_text(document_id)
+    dao_ollama.extract_data(document_id)
+    # dao_ollama.get_patient(document_id)
+    # dao_ollama.get_date(document_id)
+    # dao_ollama.clear_text(document_id)
+    delete_file(document_id)
     return {'message': 'OK'}
 
 
 @router.post(
-    '/file', status_code=HTTPStatus.CREATED, response_model=list[Document]
+    '/file',
+    status_code=HTTPStatus.CREATED,
+    response_model=list[Document],
 )
-def upload_files(
-    files: list[UploadFile] = File(...),
-    metadata: DocumentMetadata | None = Header(None),
-):
+def upload_files(files: list[UploadFile] = File(...)):
     documents = []
 
     for file in files:
@@ -36,7 +37,7 @@ def upload_files(
 
         with open(f'documents/{document.document_id}.pdf', 'wb') as buffer:
             buffer.write(file.file.read())
-        celery_add_database_document.delay(document.document_id)
+        celery_add_database_document(document.document_id)
         documents.append(document)
     return documents
 
