@@ -18,7 +18,7 @@ from unidecode import unidecode
 from .. import prompts
 from ..config import settings
 from ..dao import Connection, dao_parameters
-from ..models import Parameter
+from ..models import Parameter, EvaluateDocumentData, DocumentData
 
 CHROMA_PATH = "chroma"
 
@@ -310,7 +310,7 @@ def process_chunk_data(chunk_reference, chunks, model):
 def insert_data_to_db(document_id, aggregated_prompt, aggregated_data, price):
     with Connection() as conn:
         SCRIPT_SQL = """
-            INSERT INTO structured_data (document_id,
+            INSERT INTO document_data (document_id,
                                          prompt,
                                          document_data,
                                          price)
@@ -334,8 +334,31 @@ def extract_data(document_id):
 
     chunk_reference, chunks = get_chunks_from_parameters(document_id, parameters)
     aggregated_prompt = generate_aggregated_prompt(chunk_reference, chunks, model)
-    aggregated_data, price = process_chunk_data(chunk_reference, chunks, model)
+    document_data, price = process_chunk_data(chunk_reference, chunks, model)
 
-    insert_data_to_db(document_id, aggregated_prompt, aggregated_data, price)
+    insert_data_to_db(document_id, aggregated_prompt, document_data, price)
 
-    return {"document_id": document_id, "structured_data": aggregated_data}
+    return DocumentData(**{"document_id": document_id, "document_data": document_data})
+
+
+def evaluate_data(document_data: EvaluateDocumentData):
+    with Connection() as conn:
+        SCRIPT_SQL = """
+            UPDATE document_data
+            SET rating = %(rating)s,
+                evaluated_document_data = %(evaluated_document_data)s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE document_id = %(document_id)s;
+        """
+
+        document_data = document_data.model_dump()
+        document_data["document_data"] = (json.dumps(document_data["document_data"]),)
+        conn.exec(SCRIPT_SQL, document_data)
+
+        SCRIPT_SQL = """
+            UPDATE documents
+            SET status = 'DONE'
+            WHERE document_id = %(document_id)s;
+        """
+
+        conn.exec(SCRIPT_SQL, {"document_id": document_data.document_id})

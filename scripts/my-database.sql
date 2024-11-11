@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS documents (
     document_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS structured_data (
+CREATE TABLE IF NOT EXISTS document_data (
     data_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id UUID REFERENCES documents(document_id) ON DELETE CASCADE,
     prompt TEXT,

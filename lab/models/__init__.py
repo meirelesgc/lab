@@ -36,6 +36,10 @@ class Patient(BaseModel):
     name: str
 
 
-class StructuredData(BaseModel):
+class DocumentData(BaseModel):
     document_id: UUID
-    structured_data: dict | None
+    document_data: Optional[dict]
+
+
+class EvaluateDocumentData(DocumentData):
+    rating: int
