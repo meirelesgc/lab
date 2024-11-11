@@ -4,16 +4,16 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from ..dao import dao_ollama
-from ..models import Message
+from ..models import StructuredData
 
-router = APIRouter(tags=['Ollama'])
+router = APIRouter(tags=["Ollama"])
 
 
 @router.post(
-    '/ollama/{document_id}',
-    response_model=Message,
+    "/ollama/{document_id}",
+    response_model=StructuredData,
     status_code=HTTPStatus.CREATED,
 )
 def create_parameter(document_id: UUID):
-    document = dao_ollama.extract_data(document_id)
-    return {'message': 'OK'}
+    structured_data = dao_ollama.extract_data(document_id)
+    return structured_data

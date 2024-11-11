@@ -256,32 +256,43 @@ def dynamic_class(parameters: List[Parameter]):
     return create_model("Data", **dynamic_fields)
 
 
-def extract_data(document_id):
-    model = ChatOpenAI(api_key=settings.OPENAI_API_KEY, temperature=0.0, seed=1)
-
+def get_chunks_from_parameters(document_id, parameters):
     chunk_reference = {}
     chunks = {}
-    aggregated_data = {}
-    aggregated_prompt = ""
-    price = 0
-
-    for parameter in dao_parameters.list_database_parameters():
+    for parameter in parameters:
         result = search_chunks(document_id, parameter)
         for chunk_id, content in result.items():
             if chunk_id not in chunk_reference:
                 chunk_reference[chunk_id] = []
             chunk_reference[chunk_id].append(parameter)
         chunks.update(result)
+    return chunk_reference, chunks
 
+
+def generate_aggregated_prompt(chunk_reference, chunks, model):
+    aggregated_prompt = ""
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
-
         prompt_template = PromptTemplate.from_template(template=prompts.TEMPLATE)
         prompt = prompt_template.format(
             format_instructions=parser.get_format_instructions(),
             context=chunks[key],
         )
         aggregated_prompt += f"{prompt}\n\n---\n\n"
+    return aggregated_prompt
+
+
+def process_chunk_data(chunk_reference, chunks, model):
+    aggregated_data = {}
+    price = 0
+
+    for key, value in chunk_reference.items():
+        parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
+        prompt_template = PromptTemplate.from_template(template=prompts.TEMPLATE)
+        prompt = prompt_template.format(
+            format_instructions=parser.get_format_instructions(),
+            context=chunks[key],
+        )
         with get_openai_callback() as callback:
             response = model.invoke(prompt)
         price += callback.total_cost
@@ -293,6 +304,10 @@ def extract_data(document_id):
                     aggregated_data[field_name] = []
                 aggregated_data[field_name].append(field_value)
 
+    return aggregated_data, price
+
+
+def insert_data_to_db(document_id, aggregated_prompt, aggregated_data, price):
     with Connection() as conn:
         SCRIPT_SQL = """
             INSERT INTO structured_data (document_id,
@@ -303,7 +318,7 @@ def extract_data(document_id):
                     %(prompt)s,
                     %(document_data)s,
                     %(price)s);
-            """
+        """
         insert_data = {
             "document_id": document_id,
             "prompt": aggregated_prompt,
@@ -311,3 +326,16 @@ def extract_data(document_id):
             "price": price,
         }
         conn.exec(SCRIPT_SQL, insert_data)
+
+
+def extract_data(document_id):
+    model = ChatOpenAI(api_key=settings.OPENAI_API_KEY, temperature=0.0, seed=1)
+    parameters = dao_parameters.list_database_parameters()
+
+    chunk_reference, chunks = get_chunks_from_parameters(document_id, parameters)
+    aggregated_prompt = generate_aggregated_prompt(chunk_reference, chunks, model)
+    aggregated_data, price = process_chunk_data(chunk_reference, chunks, model)
+
+    insert_data_to_db(document_id, aggregated_prompt, aggregated_data, price)
+
+    return {"document_id": document_id, "structured_data": aggregated_data}

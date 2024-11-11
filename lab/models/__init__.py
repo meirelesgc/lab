@@ -12,7 +12,7 @@ class Message(BaseModel):
 class Document(BaseModel):
     document_id: UUID = Field(default_factory=uuid4)
     name: str
-    status: str = 'IN-PROCESS'
+    status: str = "IN-PROCESS"
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -36,25 +36,6 @@ class Patient(BaseModel):
     name: str
 
 
-class ExtractDocument(BaseModel):
+class StructuredData(BaseModel):
     document_id: UUID
-    document_json: dict = {}
-
-
-class JsonDocument(BaseModel):
-    json_id: UUID = Field(default_factory=uuid4)
-    document_id: UUID
-    document_json: dict = {}
-
-
-class JsonDocumentResponse(JsonDocument):
-    rating: int
-    evaluated_document_json: dict | None = {}
-    created_at: datetime
-
-
-class JsonDocumentEvaluation(BaseModel):
-    document_id: UUID
-    json_id: UUID
-    rating: int
-    evaluated_document_json: dict | None = {}
+    structured_data: dict | None
