@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-
+from langchain_community.callbacks.manager import get_openai_callback
 from langchain.schema.document import Document
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
@@ -262,6 +262,8 @@ def extract_data(document_id):
     chunk_reference = {}
     chunks = {}
     aggregated_data = {}
+    aggregated_prompt = ""
+    price = 0
 
     for parameter in dao_parameters.list_database_parameters():
         result = search_chunks(document_id, parameter)
@@ -279,7 +281,10 @@ def extract_data(document_id):
             format_instructions=parser.get_format_instructions(),
             context=chunks[key],
         )
-        response = model.invoke(prompt)
+        aggregated_prompt += f"{prompt}\n\n---\n\n"
+        with get_openai_callback() as callback:
+            response = model.invoke(prompt)
+        price += callback.total_cost
         data = parser.invoke(response)
 
         for field_name, field_value in data.model_dump().items():
@@ -288,5 +293,21 @@ def extract_data(document_id):
                     aggregated_data[field_name] = []
                 aggregated_data[field_name].append(field_value)
 
-    for field_name, values in aggregated_data.items():
-        print(f"{field_name}: {values}")
+    with Connection() as conn:
+        SCRIPT_SQL = """
+            INSERT INTO structured_data (document_id,
+                                         prompt,
+                                         document_data,
+                                         price)
+            VALUES (%(document_id)s,
+                    %(prompt)s,
+                    %(document_data)s,
+                    %(price)s);
+            """
+        insert_data = {
+            "document_id": document_id,
+            "prompt": aggregated_prompt,
+            "document_data": json.dumps(aggregated_data),
+            "price": price,
+        }
+        conn.exec(SCRIPT_SQL, insert_data)

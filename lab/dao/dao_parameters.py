@@ -8,8 +8,9 @@ def add_database_parameter(parameter: BaseParameter) -> Parameter:
     parameter = Parameter(**parameter.model_dump())
 
     SCRIPT_SQL = """
-        INSERT INTO public.parameters(
-        parameter_id, parameter, synonyms)
+        INSERT INTO public.parameters(parameter_id, 
+                                      parameter, 
+                                      synonyms)
         VALUES (%(parameter_id)s, %(parameter)s, %(synonyms)s);
         """
 
@@ -39,7 +40,7 @@ def delete_database_parameter(parameter_id: UUID):
         WHERE parameter_id = %(parameter_id)s
         """
     with Connection() as conn:
-        conn.exec(SCRIPT_SQL, {'parameter_id': parameter_id})
+        conn.exec(SCRIPT_SQL, {"parameter_id": parameter_id})
 
 
 def list_database_parameters():
