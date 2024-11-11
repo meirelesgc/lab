@@ -21,14 +21,13 @@ CREATE TABLE IF NOT EXISTS documents (
     document_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS documents_openai (
-    json_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS structured_data (
+    data_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id UUID REFERENCES documents(document_id) ON DELETE CASCADE,
     prompt TEXT,
-    document_json JSONB,
+    document_data JSONB,
     rating INT DEFAULT 0,
-    price NUMERIC(12, 6),
-    processing_time NUMERIC(12, 6),
-    evaluated_document_json JSONB,
+    price NUMERIC(12, 10),
+    evaluated_document_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

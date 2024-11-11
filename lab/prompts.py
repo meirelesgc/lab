@@ -86,9 +86,17 @@ Manter a integridade e clareza do texto original para análise ou formação
 """
 
 TEMPLATE = """
-You're a helpful assistant that extracts and structures information in JSON from unstructured text.
+You are an assistant for question-answering tasks. Use the following pieces of retrieved
+context to answer the question. If you don't know the answer, return None.
+Keep the answer concise and use a maximum of three sentences.
 
+Format Instructions:
 {format_instructions}
 
-{query}
+You're a helpful assistant that extracts and structures information in JSON from unstructured text.
+
+Context:
+{context}
+
+Answer:
 """
