@@ -44,7 +44,10 @@ def update_user(user_id: UUID, user: UserSchema):
     return user
 
 
-@router.delete('/user/{user_id}', response_model=Message)
+@router.delete(
+    '/user/{user_id}',
+    response_model=Message,
+)
 def delete_user(user_id: UUID):
     dao_users.delete_user(user_id)
     return {'message': 'User deleted'}
