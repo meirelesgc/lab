@@ -2,9 +2,10 @@ import json
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-from langchain_community.callbacks.manager import get_openai_callback
+
 from langchain.schema.document import Document
 from langchain_chroma import Chroma
+from langchain_community.callbacks.manager import get_openai_callback
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -18,13 +19,13 @@ from unidecode import unidecode
 from .. import prompts
 from ..config import settings
 from ..dao import Connection, dao_parameters
-from ..models import Parameter, EvaluateDocumentData, DocumentData
+from ..models import DocumentData, EvaluateDocumentData, Parameter
 
-CHROMA_PATH = "chroma"
+CHROMA_PATH = 'chroma'
 
 
 def load_documents(document_id: UUID):
-    document_loader = PyPDFLoader(f"documents/{document_id}.pdf")
+    document_loader = PyPDFLoader(f'documents/{document_id}.pdf')
     return document_loader.load()
 
 
@@ -39,7 +40,7 @@ def split_documents(document: list[Document]):
 
 
 def get_embedding_function():
-    embeddings = OllamaEmbeddings(model="mxbai-embed-large:latest")
+    embeddings = OllamaEmbeddings(model='mxbai-embed-large:latest')
     return embeddings
 
 
@@ -62,7 +63,7 @@ def add_to_chroma(chunks: list[Document]):
     db = get_chroma()
     chunks = index_chunks(chunks)
     if len(chunks):
-        new_chunk_ids = [chunk.metadata["id"] for chunk in chunks]
+        new_chunk_ids = [chunk.metadata['id'] for chunk in chunks]
         db.add_documents(chunks, ids=new_chunk_ids)
 
 
@@ -71,19 +72,19 @@ def index_chunks(chunks):
     current_chunk_index = 0
 
     for chunk in chunks:
-        source = chunk.metadata.get("source")
-        page = chunk.metadata.get("page")
-        current_page_id = f"{source}:{page}"
+        source = chunk.metadata.get('source')
+        page = chunk.metadata.get('page')
+        current_page_id = f'{source}:{page}'
 
         if current_page_id == last_page_id:
             current_chunk_index += 1
         else:
             current_chunk_index = 0
 
-        chunk_id = f"{current_page_id}:{current_chunk_index}"
+        chunk_id = f'{current_page_id}:{current_chunk_index}'
         last_page_id = current_page_id
 
-        chunk.metadata["id"] = chunk_id
+        chunk.metadata['id'] = chunk_id
 
     return chunks
 
@@ -97,7 +98,7 @@ def remove_from_chroma(document_id: UUID):
 
 
 def get_date(document_id: UUID):
-    model = OllamaLLM(model="nuextract")
+    model = OllamaLLM(model='nuextract')
 
     metadata = ['data', 'data registro', 'data atendimento', 'data exame', '1 de Janeiro de 2024', 'Jan 1, 2024', '01/01/2024', '2024/01/01']  # fmt: skip
     chunks = search_chunks(document_id, metadata)
@@ -109,12 +110,12 @@ def get_date(document_id: UUID):
         )
         date = model.invoke(prompt)
         try:
-            date = date.strip().split("<|end-output|>")
+            date = date.strip().split('<|end-output|>')
             date = json.loads(date[0])
-            if date := date.get("date", None):
-                date = datetime.strptime(date, "%d/%m/%Y")
+            if date := date.get('date', None):
+                date = datetime.strptime(date, '%d/%m/%Y')
                 with Connection() as conn:
-                    date = {"date": date, "document_id": document_id}
+                    date = {'date': date, 'document_id': document_id}
                     SCRIPT_SQL = """
                         UPDATE documents
                         SET document_date = %(date)s
@@ -123,13 +124,13 @@ def get_date(document_id: UUID):
                     conn.exec(SCRIPT_SQL, date)
                     break
         except ValueError:
-            print("Error parsing date")
+            print('Error parsing date')
         except json.JSONDecodeError:
-            print("Error parsing JSON string:")
+            print('Error parsing JSON string:')
 
 
 def get_patient(document_id: UUID):
-    model = OllamaLLM(model="nuextract")
+    model = OllamaLLM(model='nuextract')
 
     metadata = ['nome', 'paciente', 'identificação', 'cliente', 'usuario', 'registro', 'indivíduo', 'pessoa', 'identidade', 'perfil', 'sujeito', 'nome_completo', 'dados_pessoais']  # fmt: skip
     chunks = search_chunks(document_id, metadata)
@@ -142,9 +143,9 @@ def get_patient(document_id: UUID):
         )
         user_data = model.invoke(prompt)
         try:
-            user_data = user_data.strip().split("<|end-output|>")
+            user_data = user_data.strip().split('<|end-output|>')
             user_data = json.loads(user_data[0])
-            if name := user_data.get("name", None):
+            if name := user_data.get('name', None):
                 with Connection() as conn:
                     SCRIPT_SQL = """
                         SELECT patient_id
@@ -153,7 +154,7 @@ def get_patient(document_id: UUID):
                         ORDER BY COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) DESC
                         LIMIT 1;
                         """
-                    patient = {"name": name, "identifier": str(user_data)}
+                    patient = {'name': name, 'identifier': str(user_data)}
                     registry = conn.select(SCRIPT_SQL, patient)
                     if not registry:
                         SCRIPT_SQL = """
@@ -170,17 +171,17 @@ def get_patient(document_id: UUID):
                     conn.exec(
                         SCRIPT_SQL,
                         {
-                            "patient_id": registry[0].get("patient_id"),
-                            "document_id": document_id,
+                            'patient_id': registry[0].get('patient_id'),
+                            'document_id': document_id,
                         },
                     )
         except json.JSONDecodeError:
-            print("Error parsing JSON string:")
+            print('Error parsing JSON string:')
 
 
 def search_chunks(document_id, parameter):
     db = get_chroma()
-    source = {"source": f"documents/{document_id}.pdf"}
+    source = {'source': f'documents/{document_id}.pdf'}
 
     chunks = {}
     chunk_score = {}
@@ -191,7 +192,7 @@ def search_chunks(document_id, parameter):
         results = db.similarity_search_with_score(data, k=3, filter=source)
 
         for doc, score in results:
-            doc_id = doc.metadata.get("id")
+            doc_id = doc.metadata.get('id')
             if doc_id is None:
                 continue
 
@@ -211,13 +212,13 @@ def search_chunks(document_id, parameter):
 
 def clear_text(document_id):
     db = get_chroma()
-    model = OllamaLLM(model="gemma2")
+    model = OllamaLLM(model='gemma2')
 
-    source = {"source": f"documents/{document_id}.pdf"}
+    source = {'source': f'documents/{document_id}.pdf'}
     result = db.get(where=source)
 
     content = list()
-    result = zip(result["ids"], result["documents"], result["metadatas"])
+    result = zip(result['ids'], result['documents'], result['metadatas'])
     for doc_id, page_content, metadata in result:
         prompt = prompts.CLEAR_TEXT_PROMPT.format(content=page_content)
         clean_content = model.invoke(prompt)
@@ -234,26 +235,28 @@ def clear_text(document_id):
             """
         conn.exec(
             SCRIPT_SQL,
-            {"document_id": document_id, "text": "\n\n---\n\n".join(content)},
+            {'document_id': document_id, 'text': '\n\n---\n\n'.join(content)},
         )
 
 
-def create_context(text, schema, example=["", "", ""]):
-    prompt = f"<|input|>\n### Template:\n{json.dumps(json.loads(schema), indent=4)}\n"
+def create_context(text, schema, example=['', '', '']):
+    prompt = f'<|input|>\n### Template:\n{json.dumps(json.loads(schema), indent=4)}\n'
     prompt += ''.join(f'### Example:\n{json.dumps(json.loads(i), indent=4)}\n' for i in example if i)  # fmt: skip
-    return prompt + f"### Text:\n{text}\n<|output|>\n"
+    return prompt + f'### Text:\n{text}\n<|output|>\n'
 
 
 def dynamic_class(parameters: List[Parameter]):
     dynamic_fields = {}
     for param in parameters:
-        field_name = unidecode(param.parameter.strip().lower().replace(" ", "_"))
+        field_name = unidecode(
+            param.parameter.strip().lower().replace(' ', '_')
+        )
         field_name = param.parameter
         dynamic_fields[field_name] = (
             Optional[str],
-            Field(None, description=", ".join(param.synonyms)),
+            Field(None, description=', '.join(param.synonyms)),
         )
-    return create_model("Data", **dynamic_fields)
+    return create_model('Data', **dynamic_fields)
 
 
 def get_chunks_from_parameters(document_id, parameters):
@@ -270,15 +273,17 @@ def get_chunks_from_parameters(document_id, parameters):
 
 
 def generate_aggregated_prompt(chunk_reference, chunks, model):
-    aggregated_prompt = ""
+    aggregated_prompt = ''
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
-        prompt_template = PromptTemplate.from_template(template=prompts.TEMPLATE)
+        prompt_template = PromptTemplate.from_template(
+            template=prompts.TEMPLATE
+        )
         prompt = prompt_template.format(
             format_instructions=parser.get_format_instructions(),
             context=chunks[key],
         )
-        aggregated_prompt += f"{prompt}\n\n---\n\n"
+        aggregated_prompt += f'{prompt}\n\n---\n\n'
     return aggregated_prompt
 
 
@@ -288,7 +293,9 @@ def process_chunk_data(chunk_reference, chunks, model):
 
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
-        prompt_template = PromptTemplate.from_template(template=prompts.TEMPLATE)
+        prompt_template = PromptTemplate.from_template(
+            template=prompts.TEMPLATE
+        )
         prompt = prompt_template.format(
             format_instructions=parser.get_format_instructions(),
             context=chunks[key],
@@ -299,7 +306,7 @@ def process_chunk_data(chunk_reference, chunks, model):
         data = parser.invoke(response)
 
         for field_name, field_value in data.model_dump().items():
-            if field_value not in [None, ""]:
+            if field_value not in [None, '']:
                 if field_name not in aggregated_data:
                     aggregated_data[field_name] = []
                 aggregated_data[field_name].append(field_value)
@@ -320,25 +327,34 @@ def insert_data_to_db(document_id, aggregated_prompt, aggregated_data, price):
                     %(price)s);
         """
         insert_data = {
-            "document_id": document_id,
-            "prompt": aggregated_prompt,
-            "document_data": json.dumps(aggregated_data),
-            "price": price,
+            'document_id': document_id,
+            'prompt': aggregated_prompt,
+            'document_data': json.dumps(aggregated_data),
+            'price': price,
         }
         conn.exec(SCRIPT_SQL, insert_data)
 
 
 def extract_data(document_id):
-    model = ChatOpenAI(api_key=settings.OPENAI_API_KEY, temperature=0.0, seed=1)
+    model = ChatOpenAI(
+        api_key=settings.OPENAI_API_KEY, temperature=0.0, seed=1
+    )
     parameters = dao_parameters.list_database_parameters()
 
-    chunk_reference, chunks = get_chunks_from_parameters(document_id, parameters)
-    aggregated_prompt = generate_aggregated_prompt(chunk_reference, chunks, model)
+    chunk_reference, chunks = get_chunks_from_parameters(
+        document_id, parameters
+    )
+    aggregated_prompt = generate_aggregated_prompt(
+        chunk_reference, chunks, model
+    )
     document_data, price = process_chunk_data(chunk_reference, chunks, model)
 
     insert_data_to_db(document_id, aggregated_prompt, document_data, price)
 
-    return DocumentData(**{"document_id": document_id, "document_data": document_data})
+    return DocumentData(**{
+        'document_id': document_id,
+        'document_data': document_data,
+    })
 
 
 def evaluate_data(document_data: EvaluateDocumentData):
@@ -352,7 +368,9 @@ def evaluate_data(document_data: EvaluateDocumentData):
         """
 
         document_data = document_data.model_dump()
-        document_data["document_data"] = (json.dumps(document_data["document_data"]),)
+        document_data['document_data'] = (
+            json.dumps(document_data['document_data']),
+        )
         conn.exec(SCRIPT_SQL, document_data)
 
         SCRIPT_SQL = """
@@ -361,4 +379,4 @@ def evaluate_data(document_data: EvaluateDocumentData):
             WHERE document_id = %(document_id)s;
         """
 
-        conn.exec(SCRIPT_SQL, {"document_id": document_data.document_id})
+        conn.exec(SCRIPT_SQL, {'document_id': document_data.document_id})
