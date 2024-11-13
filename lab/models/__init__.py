@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class Message(BaseModel):
@@ -12,7 +12,7 @@ class Message(BaseModel):
 class Document(BaseModel):
     document_id: UUID = Field(default_factory=uuid4)
     name: str
-    status: str = "IN-PROCESS"
+    status: str = 'IN-PROCESS'
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -43,3 +43,16 @@ class DocumentData(BaseModel):
 
 class EvaluateDocumentData(DocumentData):
     rating: int
+
+
+class UserSchema(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+
+class UserPublic(BaseModel):
+    user_id: UUID
+    username: str
+    email: EmailStr
+    model_config = ConfigDict(from_attributes=True)
