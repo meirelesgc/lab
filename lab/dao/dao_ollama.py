@@ -100,14 +100,24 @@ def remove_from_chroma(document_id: UUID):
 def get_date(document_id: UUID):
     model = OllamaLLM(model='nuextract')
 
-    metadata = ['data', 'data registro', 'data atendimento', 'data exame', '1 de Janeiro de 2024', 'Jan 1, 2024', '01/01/2024', '2024/01/01']  # fmt: skip
-    chunks = search_chunks(document_id, metadata)
-    for _, chunk in enumerate(chunks.values()):
+    metadata = Parameter(
+        parameter='date',
+        synonyms=[
+            'data',
+            'data registro',
+            'data atendimento',
+            'data exame',
+        ],
+    )
+    _chunk_reference, chunks = get_chunks(document_id, [metadata])
+
+    for chunk in chunks.values():
         prompt = create_context(
             chunk,
             schema=prompts.DATE_METADATA_SCHEMA,
             example=prompts.DATE_METADATA_EXAMPLE,
         )
+        print(prompt)
         date = model.invoke(prompt)
         try:
             date = date.strip().split('<|end-output|>')
@@ -132,8 +142,23 @@ def get_date(document_id: UUID):
 def get_patient(document_id: UUID):
     model = OllamaLLM(model='nuextract')
 
-    metadata = ['nome', 'paciente', 'identificação', 'cliente', 'usuario', 'registro', 'indivíduo', 'pessoa', 'identidade', 'perfil', 'sujeito', 'nome_completo', 'dados_pessoais']  # fmt: skip
-    chunks = search_chunks(document_id, metadata)
+    metadata = Parameter(
+        parameter='name',
+        synonyms=[
+            'paciente',
+            'identificação',
+            'cliente',
+            'usuario',
+            'registro',
+            'indivíduo',
+            'pessoa',
+            'identidade',
+            'sujeito',
+            'nome_completo',
+            'dados_pessoais',
+        ],
+    )
+    _chunk_reference, chunks = get_chunks(document_id, [metadata])
 
     for chunk in chunks.values():
         prompt = create_context(
@@ -145,7 +170,7 @@ def get_patient(document_id: UUID):
         try:
             user_data = user_data.strip().split('<|end-output|>')
             user_data = json.loads(user_data[0])
-            if name := user_data.get('name', None):
+            if metadata := user_data.get('name', None):
                 with Connection() as conn:
                     SCRIPT_SQL = """
                         SELECT patient_id
@@ -154,7 +179,7 @@ def get_patient(document_id: UUID):
                         ORDER BY COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) DESC
                         LIMIT 1;
                         """
-                    patient = {'name': name, 'identifier': str(user_data)}
+                    patient = {'name': metadata, 'identifier': str(user_data)}
                     registry = conn.select(SCRIPT_SQL, patient)
                     if not registry:
                         SCRIPT_SQL = """
@@ -259,7 +284,7 @@ def dynamic_class(parameters: List[Parameter]):
     return create_model('Data', **dynamic_fields)
 
 
-def get_chunks_from_parameters(document_id, parameters):
+def get_chunks(document_id, parameters):
     chunk_reference = {}
     chunks = {}
     for parameter in parameters:
@@ -272,7 +297,7 @@ def get_chunks_from_parameters(document_id, parameters):
     return chunk_reference, chunks
 
 
-def generate_aggregated_prompt(chunk_reference, chunks, model):
+def generate_prompt(chunk_reference, chunks):
     aggregated_prompt = ''
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
@@ -306,7 +331,7 @@ def process_chunk_data(chunk_reference, chunks, model):
         data = parser.invoke(response)
 
         for field_name, field_value in data.model_dump().items():
-            if field_value not in [None, '']:
+            if field_value not in {None, ''}:
                 if field_name not in aggregated_data:
                     aggregated_data[field_name] = []
                 aggregated_data[field_name].append(field_value)
@@ -341,12 +366,8 @@ def extract_data(document_id):
     )
     parameters = dao_parameters.list_database_parameters()
 
-    chunk_reference, chunks = get_chunks_from_parameters(
-        document_id, parameters
-    )
-    aggregated_prompt = generate_aggregated_prompt(
-        chunk_reference, chunks, model
-    )
+    chunk_reference, chunks = get_chunks(document_id, parameters)
+    aggregated_prompt = generate_prompt(chunk_reference, chunks)
     document_data, price = process_chunk_data(chunk_reference, chunks, model)
 
     insert_data_to_db(document_id, aggregated_prompt, document_data, price)
