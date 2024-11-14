@@ -7,6 +7,7 @@ from langchain.schema.document import Document
 from langchain_chroma import Chroma
 from langchain_community.callbacks.manager import get_openai_callback
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_ollama import OllamaEmbeddings
@@ -19,7 +20,7 @@ from unidecode import unidecode
 from .. import prompts
 from ..config import settings
 from ..dao import Connection, dao_parameters
-from ..models import DocumentData, EvaluateDocumentData, Parameter
+from ..models import DocumentData, Parameter
 
 CHROMA_PATH = 'chroma'
 
@@ -40,7 +41,7 @@ def split_documents(document: list[Document]):
 
 
 def get_embedding_function():
-    embeddings = OllamaEmbeddings(model='mxbai-embed-large:latest')
+    embeddings = OllamaEmbeddings(model='nomic-embed-text:latest')
     return embeddings
 
 
@@ -117,7 +118,6 @@ def get_date(document_id: UUID):
             schema=prompts.DATE_METADATA_SCHEMA,
             example=prompts.DATE_METADATA_EXAMPLE,
         )
-        print(prompt)
         date = model.invoke(prompt)
         try:
             date = date.strip().split('<|end-output|>')
@@ -170,7 +170,7 @@ def get_patient(document_id: UUID):
         try:
             user_data = user_data.strip().split('<|end-output|>')
             user_data = json.loads(user_data[0])
-            if metadata := user_data.get('name', None):
+            if name := user_data.get('name', None):
                 with Connection() as conn:
                     SCRIPT_SQL = """
                         SELECT patient_id
@@ -179,7 +179,7 @@ def get_patient(document_id: UUID):
                         ORDER BY COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) DESC
                         LIMIT 1;
                         """
-                    patient = {'name': metadata, 'identifier': str(user_data)}
+                    patient = {'name': name, 'identifier': str(user_data)}
                     registry = conn.select(SCRIPT_SQL, patient)
                     if not registry:
                         SCRIPT_SQL = """
@@ -262,6 +262,7 @@ def clear_text(document_id):
             SCRIPT_SQL,
             {'document_id': document_id, 'text': '\n\n---\n\n'.join(content)},
         )
+    print(f'Fim... ID: {document_id}')
 
 
 def create_context(text, schema, example=['', '', '']):
@@ -297,7 +298,7 @@ def get_chunks(document_id, parameters):
     return chunk_reference, chunks
 
 
-def generate_prompt(chunk_reference, chunks):
+def get_prompt(chunk_reference, chunks):
     aggregated_prompt = ''
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
@@ -312,10 +313,9 @@ def generate_prompt(chunk_reference, chunks):
     return aggregated_prompt
 
 
-def process_chunk_data(chunk_reference, chunks, model):
+def get_data(chunk_reference, chunks, model):
     aggregated_data = {}
     price = 0
-
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
         prompt_template = PromptTemplate.from_template(
@@ -328,76 +328,47 @@ def process_chunk_data(chunk_reference, chunks, model):
         with get_openai_callback() as callback:
             response = model.invoke(prompt)
         price += callback.total_cost
-        data = parser.invoke(response)
 
-        for field_name, field_value in data.model_dump().items():
-            if field_value not in {None, ''}:
-                if field_name not in aggregated_data:
-                    aggregated_data[field_name] = []
-                aggregated_data[field_name].append(field_value)
-
+        try:
+            data = parser.invoke(response)
+            for field_name, field_value in data.model_dump().items():
+                if field_value not in {None, ''}:
+                    if field_name not in aggregated_data:
+                        aggregated_data[field_name] = []
+                    aggregated_data[field_name].append(field_value)
+        except OutputParserException:
+            print('Erro no parse. ')
+    print(aggregated_data)
     return aggregated_data, price
 
 
-def insert_data_to_db(document_id, aggregated_prompt, aggregated_data, price):
-    with Connection() as conn:
-        SCRIPT_SQL = """
-            INSERT INTO document_data (document_id,
-                                         prompt,
-                                         document_data,
-                                         price)
-            VALUES (%(document_id)s,
-                    %(prompt)s,
-                    %(document_data)s,
-                    %(price)s);
+def insert_data(document_id, aggregated_prompt, aggregated_data, price):
+    SCRIPT_SQL = """
+        INSERT INTO document_data (document_id, prompt, document_data, price)
+        VALUES (%(document_id)s, %(prompt)s, %(document_data)s, %(price)s);
         """
-        insert_data = {
+    with Connection() as conn:
+        params = {
             'document_id': document_id,
             'prompt': aggregated_prompt,
             'document_data': json.dumps(aggregated_data),
             'price': price,
         }
-        conn.exec(SCRIPT_SQL, insert_data)
+        conn.exec(SCRIPT_SQL, params)
 
 
 def extract_data(document_id):
     model = ChatOpenAI(
-        api_key=settings.OPENAI_API_KEY, temperature=0.0, seed=1
+        api_key=settings.OPENAI_API_KEY, temperature=0.1, seed=1
     )
     parameters = dao_parameters.list_database_parameters()
-
     chunk_reference, chunks = get_chunks(document_id, parameters)
-    aggregated_prompt = generate_prompt(chunk_reference, chunks)
-    document_data, price = process_chunk_data(chunk_reference, chunks, model)
+    aggregated_prompt = get_prompt(chunk_reference, chunks)
+    document_data, price = get_data(chunk_reference, chunks, model)
 
-    insert_data_to_db(document_id, aggregated_prompt, document_data, price)
+    insert_data(document_id, aggregated_prompt, document_data, price)
 
     return DocumentData(**{
         'document_id': document_id,
         'document_data': document_data,
     })
-
-
-def evaluate_data(document_data: EvaluateDocumentData):
-    with Connection() as conn:
-        SCRIPT_SQL = """
-            UPDATE document_data
-            SET rating = %(rating)s,
-                evaluated_document_data = %(evaluated_document_data)s,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE document_id = %(document_id)s;
-        """
-
-        document_data = document_data.model_dump()
-        document_data['document_data'] = (
-            json.dumps(document_data['document_data']),
-        )
-        conn.exec(SCRIPT_SQL, document_data)
-
-        SCRIPT_SQL = """
-            UPDATE documents
-            SET status = 'DONE'
-            WHERE document_id = %(document_id)s;
-        """
-
-        conn.exec(SCRIPT_SQL, {'document_id': document_data.document_id})

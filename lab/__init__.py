@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from lab.routers import admin, documents, ollama, parameters, patient
+from lab.routers import admin, documents, parameters, patient
 
 app = FastAPI()
 
@@ -15,7 +15,6 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-app.include_router(ollama.router)
 app.include_router(documents.router)
 app.include_router(parameters.router)
 app.include_router(patient.router)

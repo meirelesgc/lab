@@ -2,24 +2,11 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
 
 
 class Message(BaseModel):
     message: str
-
-
-class Document(BaseModel):
-    document_id: UUID = Field(default_factory=uuid4)
-    name: str
-    status: str = 'IN-PROCESS'
-    created_at: datetime = Field(default_factory=datetime.now)
-
-
-class DocumentMetadata(BaseModel):
-    patient_id: Optional[int] = None
-    doctor_id: Optional[int] = None
-    document_date: Optional[datetime] = None
 
 
 class BaseParameter(BaseModel):
@@ -36,13 +23,36 @@ class Patient(BaseModel):
     name: str
 
 
+class BaseDocument(BaseModel):
+    document_id: UUID = Field(default_factory=uuid4)
+    name: str
+    status: str = 'IN-PROCESS'
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class Document(BaseDocument):
+    patients: list[Patient] = []
+    unverified_patient: list[Patient] = []
+    document_date: Optional[datetime]
+    document_data: dict[str, str] = Field(default_factory=dict)
+
+
 class DocumentData(BaseModel):
-    document_id: UUID
+    data_id: UUID = Field(default_factory=uuid4)
     document_data: Optional[dict]
 
 
 class EvaluateDocumentData(DocumentData):
+    document_id: UUID
     rating: int
+    patient_id: list[UUID] | UUID
+    document_date: datetime
+
+    @validator('patient_id', pre=True, always=True)
+    def validate_patient_id(cls, value):
+        if len(value) > 1:
+            raise ValueError('patient_id must contain only one UUID.')
+        return value[0] if value else None
 
 
 class UserSchema(BaseModel):
