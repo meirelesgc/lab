@@ -154,3 +154,23 @@ def update_data(evaluated_data: EvaluateDocumentData):
             WHERE document_id = %(document_id)s;
             """
         conn.exec(SCRIPT_SQL, evaluated_data)
+
+
+def att_status(document_id, chunks):
+    SCRIPT_SQL = """
+        UPDATE documents SET
+        status = 'STANDBY',
+        document = %(text)s
+        WHERE document_id = %(document_id)s;
+        """
+    with Connection() as conn:
+        conn.exec(
+            SCRIPT_SQL,
+            {
+                'document_id': document_id,
+                'text': '\n\n---\n\n'.join([
+                    chunk.page_content for chunk in chunks
+                ]),
+            },
+        )
+    print(f'Fim... ID: {document_id}')

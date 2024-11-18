@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
@@ -56,6 +57,7 @@ def embed_document(document_id):
     document = load_documents(document_id)
     chunks = split_documents(document)
     add_to_chroma(chunks)
+    return chunks
 
 
 def add_to_chroma(chunks: list[Document]):
@@ -63,9 +65,31 @@ def add_to_chroma(chunks: list[Document]):
 
     db = get_chroma()
     chunks = index_chunks(chunks)
+    chunks = enrich_chunks(chunks)
     if len(chunks):
         new_chunk_ids = [chunk.metadata['id'] for chunk in chunks]
         db.add_documents(chunks, ids=new_chunk_ids)
+
+
+def enrich_chunks(chunks):
+    model = OllamaLLM(model='gemma2')
+
+    for chunk in chunks:
+        prompt = f"""
+Formate o texto a seguir, mantendo a organização e sem alterar o conteúdo.
+Não me interesso por dados pessoais ou informações que identifiquem o usuario.
+Ao final, forneça um resumo conciso do que está sendo exposto no conteúdo:
+
+Texto:
+{chunk.page_content}
+
+Resumo:
+"""
+        new_chunk = model.invoke(prompt)
+        print(chunk.metadata.get('id'))
+        print(new_chunk)
+        chunk.page_content = new_chunk
+    return chunks
 
 
 def index_chunks(chunks):
@@ -214,7 +238,8 @@ def search_chunks(document_id, parameter):
 
     vocabulary = parameter.synonyms + [parameter.parameter]
     for data in vocabulary:
-        results = db.similarity_search_with_score(data, k=3, filter=source)
+        query = f'Quantidade de {data} do paciente'
+        results = db.similarity_search_with_score(query, k=3, filter=source)
 
         for doc, score in results:
             doc_id = doc.metadata.get('id')
@@ -229,40 +254,10 @@ def search_chunks(document_id, parameter):
                 chunk_score[doc_id] += score
                 chunk_recorency[doc_id] += 1
 
-    scores = {doc_id: chunk_score[doc_id] / chunk_recorency[doc_id] for doc_id in chunks}  # fmt: skip
+    scores = {doc_id: chunk_score[doc_id] + chunk_recorency[doc_id] for doc_id in chunks}  # fmt: skip
     top_chunks = sorted(scores, key=scores.get, reverse=True)[:3]
 
     return {doc_id: chunks[doc_id] for doc_id in top_chunks}
-
-
-def clear_text(document_id):
-    db = get_chroma()
-    model = OllamaLLM(model='gemma2')
-
-    source = {'source': f'documents/{document_id}.pdf'}
-    result = db.get(where=source)
-
-    content = list()
-    result = zip(result['ids'], result['documents'], result['metadatas'])
-    for doc_id, page_content, metadata in result:
-        prompt = prompts.CLEAR_TEXT_PROMPT.format(content=page_content)
-        clean_content = model.invoke(prompt)
-        content.append(clean_content)
-        new_doc = Document(page_content=clean_content, metadata=metadata)
-        db.update_document(document_id=doc_id, document=new_doc)
-
-    with Connection() as conn:
-        SCRIPT_SQL = """
-            UPDATE documents SET
-            status = 'STANDBY',
-            document = %(text)s
-            WHERE document_id = %(document_id)s;
-            """
-        conn.exec(
-            SCRIPT_SQL,
-            {'document_id': document_id, 'text': '\n\n---\n\n'.join(content)},
-        )
-    print(f'Fim... ID: {document_id}')
 
 
 def create_context(text, schema, example=['', '', '']):
@@ -313,9 +308,15 @@ def get_prompt(chunk_reference, chunks):
     return aggregated_prompt
 
 
-def get_data(chunk_reference, chunks, model):
+def get_data(chunk_reference, chunks):
+    model = ChatOpenAI(api_key=settings.OPENAI_API_KEY, temperature=0, seed=1)
+
     aggregated_data = {}
     price = 0
+
+    for parameter in dao_parameters.list_database_parameters():
+        aggregated_data[parameter.parameter] = []
+
     for key, value in chunk_reference.items():
         parser = PydanticOutputParser(pydantic_object=dynamic_class(value))
         prompt_template = PromptTemplate.from_template(
@@ -325,6 +326,7 @@ def get_data(chunk_reference, chunks, model):
             format_instructions=parser.get_format_instructions(),
             context=chunks[key],
         )
+
         with get_openai_callback() as callback:
             response = model.invoke(prompt)
         price += callback.total_cost
@@ -333,12 +335,9 @@ def get_data(chunk_reference, chunks, model):
             data = parser.invoke(response)
             for field_name, field_value in data.model_dump().items():
                 if field_value not in {None, ''}:
-                    if field_name not in aggregated_data:
-                        aggregated_data[field_name] = []
                     aggregated_data[field_name].append(field_value)
         except OutputParserException:
             print('Erro no parse. ')
-    print(aggregated_data)
     return aggregated_data, price
 
 
@@ -358,15 +357,31 @@ def insert_data(document_id, aggregated_prompt, aggregated_data, price):
 
 
 def extract_data(document_id):
-    model = ChatOpenAI(
-        api_key=settings.OPENAI_API_KEY, temperature=0.1, seed=1
-    )
-    parameters = dao_parameters.list_database_parameters()
-    chunk_reference, chunks = get_chunks(document_id, parameters)
-    aggregated_prompt = get_prompt(chunk_reference, chunks)
-    document_data, price = get_data(chunk_reference, chunks, model)
+    start_time = time.time()
+    print(f'Fim da etapa 1 - Tempo: {time.time() - start_time:.2f}')
 
+    etapa_start_time = time.time()
+    parameters = dao_parameters.list_database_parameters()
+    print(f'Fim da etapa 2 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    chunk_reference, chunks = get_chunks(document_id, parameters)
+    print(f'Fim da etapa 3 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    aggregated_prompt = get_prompt(chunk_reference, chunks)
+    print(f'Fim da etapa 4 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    document_data, price = get_data(chunk_reference, chunks)
+    print(f'Fim da etapa 5 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
     insert_data(document_id, aggregated_prompt, document_data, price)
+    print(f'Fim da etapa 6 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    total_time = time.time() - start_time
+    print(f'Tempo total: {total_time:.2f}')
 
     return DocumentData(**{
         'document_id': document_id,

@@ -21,10 +21,14 @@ router = APIRouter(tags=['Documents'])
 
 @celery.task()
 def celery_add_database_document(document_id):
-    dao_ollama.embed_document(document_id)
+    chunks = dao_ollama.embed_document(document_id)
+
     dao_ollama.get_patient(document_id)
     dao_ollama.get_date(document_id)
-    # dao_ollama.clear_text(document_id)
+
+    dao_documents.extract_data(document_id)
+
+    dao_documents.att_status(document_id, chunks)
     return {'message': 'OK'}
 
 

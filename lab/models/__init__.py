@@ -34,7 +34,7 @@ class Document(BaseDocument):
     patients: list[Patient] = []
     unverified_patient: list[Patient] = []
     document_date: Optional[datetime]
-    document_data: dict[str, str] = Field(default_factory=dict)
+    document_data: dict = Field(default_factory=dict)
 
 
 class DocumentData(BaseModel):
