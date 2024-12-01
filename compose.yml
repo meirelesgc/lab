@@ -1,0 +1,41 @@
+services:
+  postgres-lab:
+    image: ankane/pgvector
+    container_name: postgres-lab
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-lab:/var/lib/postgresql/data
+    networks:
+        - network_001
+
+  ollama-lab:
+    image: ollama/ollama
+    container_name: ollama-lab
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-lab:/root/.ollama
+    networks:
+        - network_001
+
+  rabbitmq-lab:
+    image: rabbitmq
+    container_name: rabbitmq-lab
+    ports:
+      - "5672:5672"
+    networks:
+        - network_001
+  
+
+networks:
+  network_001:
+    external: true
+    
+volumes:
+  postgres-lab:
+  ollama-lab:
