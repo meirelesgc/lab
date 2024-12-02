@@ -42,7 +42,7 @@ def split_documents(document: list[Document]):
 
 
 def get_embedding_function():
-    embeddings = OllamaEmbeddings(model='nomic-embed-text:latest')
+    embeddings = OllamaEmbeddings(model='nomic-embed-text:latest', base_url=settings.OLLAMA_HOST)
     return embeddings
 
 
@@ -72,13 +72,12 @@ def add_to_chroma(chunks: list[Document]):
 
 
 def enrich_chunks(chunks):
-    model = OllamaLLM(model='gemma2')
+    model = OllamaLLM(model='gemma2', base_url=settings.OLLAMA_HOST)
 
     for chunk in chunks:
         prompt = f"""
-Formate o texto a seguir, mantendo a organização e sem alterar o conteúdo.
-Não me interesso por dados pessoais ou informações que identifiquem o usuario.
-Ao final, forneça um resumo conciso do que está sendo exposto no conteúdo:
+Formate o texto a seguir, mantendo a organização.
+Não me interesso por dados pessoais ou informações que identifiquem o usuario, local ou semelhantes.
 
 Texto:
 {chunk.page_content}
@@ -116,14 +115,13 @@ def index_chunks(chunks):
 
 def remove_from_chroma(document_id: UUID):
     db = get_chroma()
-
     existing_items = db.get(include=[])
     ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
     db.delete(ids=ids)
 
 
 def get_date(document_id: UUID):
-    model = OllamaLLM(model='nuextract')
+    model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
 
     metadata = Parameter(
         parameter='date',
@@ -164,7 +162,7 @@ def get_date(document_id: UUID):
 
 
 def get_patient(document_id: UUID):
-    model = OllamaLLM(model='nuextract')
+    model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
 
     metadata = Parameter(
         parameter='name',

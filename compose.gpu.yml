@@ -1,4 +1,15 @@
 services:
+  ollama-lab:
+    image: ollama/ollama
+    container_name: ollama-lab
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-lab:/root/.ollama
+    runtime: nvidia
+    networks:
+        - network_001
+
   postgres-lab:
     image: ankane/pgvector
     container_name: postgres-lab
@@ -11,22 +22,6 @@ services:
     volumes:
       - postgres-lab:/var/lib/postgresql/data
       - ./scripts/schema.sql:/docker-entrypoint-initdb.d/schema.sql
-    networks:
-        - network_001
-
-  ollama-lab:
-    image: ollama/ollama
-    container_name: ollama-lab
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-lab:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
-    runtime: nvidia
     networks:
         - network_001
 
