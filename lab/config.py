@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     PORT: int = 5432
     OPENAI_API_KEY: Optional[str] = None
     BROKER: str = 'pyamqp://guest@localhost//'
+    OLLAMA_HOST: str = 'http://localhost:11434'
 
     class Config:
         env_file = '.env'
