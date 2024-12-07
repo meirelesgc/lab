@@ -1,41 +1,42 @@
 services:
-  postgres-lab:
+  lab-postgres:
     image: ankane/pgvector
-    container_name: postgres-lab
+    container_name: lab-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_DB: lab
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5434:5432"
+      - "5436:5432"
     volumes:
-      - postgres-lab:/var/lib/postgresql/data
+      - lab-postgres:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-        - network_001
+        - 001-network
 
-  ollama-lab:
+  lab-ollama:
     image: ollama/ollama
-    container_name: ollama-lab
+    container_name: lab-ollama
     ports:
       - "11434:11434"
     volumes:
-      - ollama-lab:/root/.ollama
+      - lab-ollama:/root/.ollama
     networks:
-        - network_001
+        - 001-network
 
-  rabbitmq-lab:
+  lab-rabbitmq:
     image: rabbitmq
-    container_name: rabbitmq-lab
+    container_name: lab-rabbitmq
     ports:
       - "5672:5672"
     networks:
-        - network_001
+        - 001-network
   
 
 networks:
-  network_001:
+  001-network:
     external: true
     
 volumes:
-  postgres-lab:
-  ollama-lab:
+  lab-postgres:
+  lab-ollama:

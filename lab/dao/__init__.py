@@ -39,7 +39,9 @@ class Connection:
                 raise
 
     def select(self, script_sql: str, parameters: list = []):
-        with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:  # fmt: skip
+        with self.connection.cursor(
+            row_factory=psycopg.rows.dict_row
+        ) as cursor:
             cursor.execute(script_sql, parameters)
             return cursor.fetchall()
 
@@ -49,7 +51,9 @@ class Connection:
             self.connection.commit()
 
     def exec_with_result(self, script_sql: str, parameters: list = []):
-        with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:  # fmt: skip
+        with self.connection.cursor(
+            row_factory=psycopg.rows.dict_row
+        ) as cursor:
             cursor.execute(script_sql, parameters)
             self.connection.commit()
             return cursor.fetchone()

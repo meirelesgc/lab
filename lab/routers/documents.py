@@ -26,7 +26,7 @@ def celery_add_database_document(document_id):
     dao_ollama.get_patient(document_id)
     dao_ollama.get_date(document_id)
 
-    dao_documents.extract_data(document_id)
+    dao_ollama.extract_data(document_id)
 
     dao_documents.att_status(document_id, chunks)
     return {'message': 'OK'}

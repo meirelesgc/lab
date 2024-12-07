@@ -11,9 +11,10 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_ollama import OllamaEmbeddings
-from langchain_ollama.llms import OllamaLLM
-from langchain_openai import ChatOpenAI
+
+# from langchain_ollama.llms import OllamaLLM
+# from langchain_ollama import OllamaEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import Field, create_model
 from unidecode import unidecode
@@ -42,7 +43,10 @@ def split_documents(document: list[Document]):
 
 
 def get_embedding_function():
-    embeddings = OllamaEmbeddings(model='nomic-embed-text:latest', base_url=settings.OLLAMA_HOST)
+    # embeddings = OllamaEmbeddings(model='nomic-embed-text:latest', base_url=settings.OLLAMA_HOST)
+    embeddings = OpenAIEmbeddings(
+        model='text-embedding-3-large', api_key=settings.OPENAI_API_KEY
+    )
     return embeddings
 
 
@@ -72,7 +76,8 @@ def add_to_chroma(chunks: list[Document]):
 
 
 def enrich_chunks(chunks):
-    model = OllamaLLM(model='gemma2', base_url=settings.OLLAMA_HOST)
+    # model = OllamaLLM(model='gemma2', base_url=settings.OLLAMA_HOST)
+    model = ChatOpenAI(model='gpt-4o', api_key=settings.OPENAI_API_KEY)
 
     for chunk in chunks:
         prompt = f"""
@@ -86,8 +91,8 @@ Resumo:
 """
         new_chunk = model.invoke(prompt)
         print(chunk.metadata.get('id'))
-        print(new_chunk)
-        chunk.page_content = new_chunk
+        print(new_chunk.content)
+        chunk.page_content = new_chunk.content
     return chunks
 
 
@@ -121,7 +126,8 @@ def remove_from_chroma(document_id: UUID):
 
 
 def get_date(document_id: UUID):
-    model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
+    # model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
+    model = ChatOpenAI(model='gpt-4o', api_key=settings.OPENAI_API_KEY)
 
     metadata = Parameter(
         parameter='date',
@@ -142,7 +148,7 @@ def get_date(document_id: UUID):
         )
         date = model.invoke(prompt)
         try:
-            date = date.strip().split('<|end-output|>')
+            date = date.content.strip().split('<|end-output|>')
             date = json.loads(date[0])
             if date := date.get('date', None):
                 date = datetime.strptime(date, '%d/%m/%Y')
@@ -162,7 +168,8 @@ def get_date(document_id: UUID):
 
 
 def get_patient(document_id: UUID):
-    model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
+    # model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
+    model = ChatOpenAI(model='gpt-4o', api_key=settings.OPENAI_API_KEY)
 
     metadata = Parameter(
         parameter='name',
@@ -190,7 +197,7 @@ def get_patient(document_id: UUID):
         )
         user_data = model.invoke(prompt)
         try:
-            user_data = user_data.strip().split('<|end-output|>')
+            user_data = user_data.content.strip().split('<|end-output|>')
             user_data = json.loads(user_data[0])
             if name := user_data.get('name', None):
                 with Connection() as conn:

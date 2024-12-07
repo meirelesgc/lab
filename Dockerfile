@@ -9,8 +9,9 @@ RUN pip install poetry
 RUN poetry config installer.max-workers 10
 RUN poetry install --no-interaction --no-ansi
 
+RUN poetry run python -c "from lab.dao.dao_ollama import get_chroma; get_chroma()" && chmod -R 777 /app/chroma
+
 EXPOSE 8000
-EXPOSE 5672
 
 RUN chmod +x /app/entrypoint.sh
 

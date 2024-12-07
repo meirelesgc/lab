@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         env_file = '.env'
         env_file_encoding = 'utf-8'
 
-    @validator('OPENAI_API_KEY', pre=True, always=True)
+    @field_validator('OPENAI_API_KEY', mode='before')
     def check_openai_key(cls, v):
         if v is None:
             raise ValueError(
