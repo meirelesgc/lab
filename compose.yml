@@ -15,14 +15,16 @@ services:
         - 001-network
 
   lab-ollama:
-    image: ollama/ollama
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
     container_name: lab-ollama
     ports:
       - "11434:11434"
     volumes:
       - lab-ollama:/root/.ollama
     networks:
-        - 001-network
+      - 001-network
 
   lab-rabbitmq:
     image: rabbitmq
