@@ -4,25 +4,28 @@ services:
     container_name: lab-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_DB: lab
       POSTGRES_PASSWORD: postgres
     ports:
       - "5436:5432"
     volumes:
       - lab-postgres:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
         - 001-network
 
   lab-ollama:
-    image: ollama/ollama
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
     container_name: lab-ollama
+    runtime: nvidia
     ports:
       - "11434:11434"
     volumes:
       - lab-ollama:/root/.ollama
-    runtime: nvidia
     networks:
-        - 001-network
+      - 001-network
 
   lab-rabbitmq:
     image: rabbitmq
@@ -31,6 +34,7 @@ services:
       - "5672:5672"
     networks:
         - 001-network
+  
 
 networks:
   001-network:
