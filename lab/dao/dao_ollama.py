@@ -43,7 +43,7 @@ def split_documents(document: list[Document]):
 
 def get_embedding_function():
     embeddings = OllamaEmbeddings(
-        model='nomic-embed-text:latest',
+        model='mxbai-embed-large:335m',
         base_url=settings.OLLAMA_HOST,
     )
     return embeddings
@@ -75,7 +75,7 @@ def add_to_chroma(chunks: list[Document]):
 
 
 def enrich_chunks(chunks):
-    model = OllamaLLM(model='gemma2', base_url=settings.OLLAMA_HOST)
+    model = OllamaLLM(model='gemma2:9b', base_url=settings.OLLAMA_HOST)
     for chunk in chunks:
         prompt = f"""
 Formate o texto a seguir, mantendo a organização.
@@ -122,7 +122,7 @@ def remove_from_chroma(document_id: UUID):
 
 
 def get_date(document_id: UUID):
-    model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
+    model = OllamaLLM(model='nuextract:3.8b', base_url=settings.OLLAMA_HOST)
 
     metadata = Parameter(
         parameter='date',
@@ -163,7 +163,7 @@ def get_date(document_id: UUID):
 
 
 def get_patient(document_id: UUID):
-    model = OllamaLLM(model='nuextract', base_url=settings.OLLAMA_HOST)
+    model = OllamaLLM(model='nuextract:3.8b', base_url=settings.OLLAMA_HOST)
 
     metadata = Parameter(
         parameter='name',
