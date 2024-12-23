@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class Message(BaseModel):
@@ -48,7 +48,7 @@ class EvaluateDocumentData(DocumentData):
     patient_id: list[UUID] | UUID
     document_date: datetime
 
-    @validator('patient_id', pre=True, always=True)
+    @field_validator('patient_id')
     def validate_patient_id(cls, value):
         if len(value) > 1:
             raise ValueError('patient_id must contain only one UUID.')
@@ -66,3 +66,12 @@ class UserPublic(BaseModel):
     username: str
     email: EmailStr
     model_config = ConfigDict(from_attributes=True)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: str | None = None

@@ -12,7 +12,7 @@ services:
       - lab-postgres:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-        - 001-network
+        - network_001
 
   lab-ollama:
     build:
@@ -23,9 +23,14 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - lab-ollama:/root/.ollama
+      - lab-ollama-config:/root/.ollama
+      - lab-ollama-models:/models
+      - lab-ollama-logs:/var/log/ollama
+    environment:
+      - OLLAMA_DEBUG=false
+      - OLLAMA_KEEP_ALIVE=-1
     networks:
-      - 001-network
+      - network_001
 
   lab-rabbitmq:
     image: rabbitmq
@@ -33,13 +38,15 @@ services:
     ports:
       - "5672:5672"
     networks:
-        - 001-network
+        - network_001
   
 
 networks:
-  001-network:
+  network_001:
     external: true
     
 volumes:
   lab-postgres:
-  lab-ollama:
+  lab-ollama-logs:
+  lab-ollama-config:
+  lab-ollama-models:

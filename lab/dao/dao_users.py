@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from ..models import UserPublic, UserSchema
+from ..security import get_password_hash
 from . import Connection
 
 
@@ -10,6 +11,8 @@ def create_user(user: UserSchema) -> UserPublic:
         VALUES (%(username)s, %(password)s, %(email)s)
         RETURNING user_id;
         """
+    user.password = get_password_hash(user.password)
+
     with Connection() as conn:
         result = conn.exec_with_result(SCRIPT_SQL, user.model_dump())
     return UserPublic(user_id=result['user_id'], **user.model_dump())
@@ -33,6 +36,7 @@ def update_user(user_id: UUID, user: UserSchema):
             password = %(password)s
         WHERE user_id = %(user_id)s;
         """
+    user.password = get_password_hash(user.password)
     user = {**user.model_dump(), 'user_id': user_id}
     with Connection() as conn:
         conn.exec(SCRIPT_SQL, user)
@@ -45,4 +49,34 @@ def delete_user(user_id: UUID):
         WHERE user_id = %(user_id)s
         """
     with Connection() as conn:
-        conn.exec(SCRIPT_SQL, {'user_id': user_id})
+        param = {'user_id': user_id}
+        conn.exec(SCRIPT_SQL, param)
+
+
+def user_id_exists(user_id: UUID):
+    SCRIPT_SQL = """
+        SELECT user_id
+        FROM users WHERE user_id = %(user_id)s;
+        """
+
+    with Connection() as conn:
+        param = {'user_id': user_id}
+        result = conn.select(SCRIPT_SQL, param)
+
+    if result:
+        return result[0]
+
+
+def user_email_exists(email: str):
+    SCRIPT_SQL = """
+        SELECT user_id, password, email
+        FROM users
+        WHERE email = %(email)s;
+        """
+
+    with Connection() as conn:
+        param = {'email': email}
+        result = conn.select(SCRIPT_SQL, param)
+
+    if result:
+        return result[0]

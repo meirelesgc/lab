@@ -1,14 +1,14 @@
-FROM ollama/ollama:0.3.6
+FROM ollama/ollama
 
-ENV OLLAMA_HOST 0.0.0.0:11434
+ENV OLLAMA_HOST=0.0.0.0:11434 \
+    OLLAMA_MODELS=/models \
+    OLLAMA_DEBUG=false \
+    OLLAMA_KEEP_ALIVE=-1
 
-ENV OLLAMA_MODELS /models
-
-ENV OLLAMA_DEBUG false
-
-ENV OLLAMA_KEEP_ALIVE -1 
-
-RUN ollama serve & sleep 5 && ollama pull gemma2:9b && ollama pull nuextract:3.8b && ollama pull mxbai-embed-large:335m
+RUN ollama serve & sleep 5 && \
+    ollama pull gemma2:9b && \
+    ollama pull nuextract:3.8b && \
+    ollama pull mxbai-embed-large:335m
 
 EXPOSE 11434
 
