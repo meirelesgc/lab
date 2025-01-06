@@ -20,14 +20,33 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - lab-ollama:/root/.ollama
+      - lab-ollama-config:/root/.ollama
+      - lab-ollama-models:/models
+      - lab-ollama-logs:/var/log/ollama
+    environment:
+      - OLLAMA_DEBUG=false
+      - OLLAMA_KEEP_ALIVE=-1
 
   lab-rabbitmq:
     image: rabbitmq
     container_name: lab-rabbitmq
     ports:
       - "5672:5672"
-
+  
+  lab-chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    environment:
+      - IS_PERSISTENT=TRUE
+    volumes:
+      - chroma-data:/chroma/chroma/
+    ports:
+      - "6000:8000"
 volumes:
-  lab-postgres:
-  lab-ollama:
+  lab-postgres: 
+  
+  chroma-data:
+    driver: local
+
+  lab-ollama-logs:
+  lab-ollama-config:
+  lab-ollama-models:
