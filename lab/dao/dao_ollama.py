@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
+import chromadb
 from langchain.schema.document import Document
 from langchain_chroma import Chroma
 from langchain_community.callbacks.manager import get_openai_callback
@@ -23,7 +24,7 @@ from ..config import settings
 from ..dao import Connection, dao_parameters
 from ..models import DocumentData, Parameter
 
-CHROMA_PATH = 'chroma'
+CHROMA_PATH = '/tmp/chroma'
 
 
 def load_documents(document_id: UUID):
@@ -49,9 +50,11 @@ def get_embedding_function():
     return embeddings
 
 
-def get_chroma():
+def get_vectorstore():
+    chromadb_client = chromadb.HttpClient(host='localhost', port=6000)
     return Chroma(
-        persist_directory=CHROMA_PATH,
+        client=chromadb_client,
+        collection_name='documents',
         embedding_function=get_embedding_function(),
     )
 
@@ -66,7 +69,7 @@ def embed_document(document_id):
 def add_to_chroma(chunks: list[Document]):
     new_chunk_ids = list()
 
-    db = get_chroma()
+    db = get_vectorstore()
     chunks = index_chunks(chunks)
     chunks = enrich_chunks(chunks)
     if len(chunks):
@@ -115,7 +118,7 @@ def index_chunks(chunks):
 
 
 def remove_from_chroma(document_id: UUID):
-    db = get_chroma()
+    db = get_vectorstore()
     existing_items = db.get(include=[])
     ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
     db.delete(ids=ids)
@@ -228,7 +231,7 @@ def get_patient(document_id: UUID):
 
 
 def search_chunks(document_id, parameter):
-    db = get_chroma()
+    db = get_vectorstore()
     source = {'source': f'documents/{document_id}.pdf'}
 
     chunks = {}

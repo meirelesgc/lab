@@ -18,6 +18,9 @@ class Settings(BaseSettings):
         env_file = '.env'
         env_file_encoding = 'utf-8'
 
+    def get_connection_string(self) -> str:
+        return f'postgresql://{self.PG_USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DATABASE}'
+
     @field_validator('OPENAI_API_KEY', mode='before')
     def check_openai_key(cls, v):
         if v is None:

@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 from http import HTTPStatus
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jwt import DecodeError, decode, encode
 from pwdlib import PasswordHash
-from zoneinfo import ZoneInfo
 
 from lab.models import TokenData
 

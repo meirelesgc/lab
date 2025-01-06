@@ -11,8 +11,6 @@ services:
     volumes:
       - lab-postgres:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-        - network_001
 
   lab-ollama:
     build:
@@ -29,24 +27,27 @@ services:
     environment:
       - OLLAMA_DEBUG=false
       - OLLAMA_KEEP_ALIVE=-1
-    networks:
-      - network_001
 
   lab-rabbitmq:
     image: rabbitmq
     container_name: lab-rabbitmq
     ports:
       - "5672:5672"
-    networks:
-        - network_001
   
-
-networks:
-  network_001:
-    external: true
-    
+  lab-chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    environment:
+      - IS_PERSISTENT=TRUE
+    volumes:
+      - chroma-data:/chroma/chroma/
+    ports:
+      - "6000:8000"
 volumes:
-  lab-postgres:
+  lab-postgres: 
+  
+  chroma-data:
+    driver: local
+
   lab-ollama-logs:
   lab-ollama-config:
   lab-ollama-models:
