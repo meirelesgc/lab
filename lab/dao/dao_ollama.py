@@ -71,28 +71,9 @@ def add_to_chroma(chunks: list[Document]):
 
     db = get_vectorstore()
     chunks = index_chunks(chunks)
-    chunks = enrich_chunks(chunks)
     if len(chunks):
         new_chunk_ids = [chunk.metadata['id'] for chunk in chunks]
         db.add_documents(chunks, ids=new_chunk_ids)
-
-
-def enrich_chunks(chunks):
-    model = OllamaLLM(model='gemma2:9b', base_url=settings.OLLAMA_HOST)
-    for chunk in chunks:
-        prompt = f"""
-Formate o texto a seguir, mantendo a organização.
-Não me interesso por dados pessoais ou informações que identifiquem o usuario, local ou semelhantes.
-
-Texto:
-{chunk.page_content}
-
-Resumo:
-"""
-        new_chunk = model.invoke(prompt)
-        print(chunk.metadata.get('id'))
-        chunk.page_content = new_chunk
-    return chunks
 
 
 def index_chunks(chunks):
