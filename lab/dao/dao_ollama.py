@@ -14,9 +14,9 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_ollama import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pydantic import Field, create_model
+from pydantic import BaseModel, Field, create_model
 from unidecode import unidecode
 
 from .. import prompts
@@ -50,6 +50,13 @@ def get_embedding_function():
     return embeddings
 
 
+def get_embedding_function_openai():
+    embeddings = OpenAIEmbeddings(
+        model='text-embedding-3-large', api_key=settings.OPENAI_API_KEY
+    )
+    return embeddings
+
+
 def get_vectorstore():
     chromadb_client = chromadb.HttpClient(host='localhost', port=6000)
     return Chroma(
@@ -59,17 +66,41 @@ def get_vectorstore():
     )
 
 
+def get_vectorstore_openai():
+    chromadb_client = chromadb.HttpClient(host='localhost', port=6000)
+    return Chroma(
+        client=chromadb_client,
+        collection_name='documents_openai',
+        embedding_function=get_embedding_function_openai(),
+    )
+
+
 def embed_document(document_id):
     document = load_documents(document_id)
-    chunks = split_documents(document)
-    add_to_chroma(chunks)
-    return chunks
+    add_to_chroma(document)
+    return document
+
+
+def embed_document_openai(document_id):
+    document = load_documents(document_id)
+    add_to_chroma_openai(document)
+    return document
 
 
 def add_to_chroma(chunks: list[Document]):
     new_chunk_ids = list()
 
     db = get_vectorstore()
+    chunks = index_chunks(chunks)
+    if len(chunks):
+        new_chunk_ids = [chunk.metadata['id'] for chunk in chunks]
+        db.add_documents(chunks, ids=new_chunk_ids)
+
+
+def add_to_chroma_openai(chunks: list[Document]):
+    new_chunk_ids = list()
+
+    db = get_vectorstore_openai()
     chunks = index_chunks(chunks)
     if len(chunks):
         new_chunk_ids = [chunk.metadata['id'] for chunk in chunks]
@@ -99,10 +130,23 @@ def index_chunks(chunks):
 
 
 def remove_from_chroma(document_id: UUID):
-    db = get_vectorstore()
-    existing_items = db.get(include=[])
-    ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
-    db.delete(ids=ids)
+    try:
+        db = get_vectorstore()
+        existing_items = db.get(include=[])
+        ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
+        db.delete(ids=ids)
+    except Exception:
+        print('Não achei')
+
+
+def remove_from_chroma_openai(document_id: UUID):
+    try:
+        db = get_vectorstore_openai()
+        existing_items = db.get(include=[])
+        ids = [existing_id for existing_id in existing_items['ids'] if str(document_id) in existing_id]  # fmt: skip
+        db.delete(ids=ids)
+    except Exception:
+        print('Não achei')
 
 
 def get_date(document_id: UUID):
@@ -131,6 +175,49 @@ def get_date(document_id: UUID):
             date = json.loads(date[0])
             if date := date.get('date', None):
                 date = datetime.strptime(date, '%d/%m/%Y')
+                with Connection() as conn:
+                    date = {'date': date, 'document_id': document_id}
+                    SCRIPT_SQL = """
+                        UPDATE documents
+                        SET document_date = %(date)s
+                        WHERE document_id = %(document_id)s;
+                        """
+                    conn.exec(SCRIPT_SQL, date)
+                    break
+        except ValueError:
+            print('Error parsing date')
+        except json.JSONDecodeError:
+            print('Error parsing JSON string:')
+
+
+def get_date_openai(document_id: UUID):
+    model = ChatOpenAI(model='gpt-4o-mini', api_key=settings.OPENAI_API_KEY)
+
+    metadata = Parameter(
+        parameter='date',
+        synonyms=[
+            'data',
+            'data registro',
+            'data atendimento',
+            'data exame',
+        ],
+    )
+    _chunk_reference, chunks = get_chunks_openai(document_id, [metadata])
+
+    class Date(BaseModel):
+        date: datetime | None
+
+    parser = PydanticOutputParser(pydantic_object=Date)
+    prompt_template = PromptTemplate.from_template(template=prompts.TEMPLATE)
+    for chunk in chunks.values():
+        prompt = prompt_template.format(
+            format_instructions=parser.get_format_instructions(),
+            context=chunk,
+        )
+        date = model.invoke(prompt)
+        try:
+            date = parser.invoke(date)
+            if date := date.date:
                 with Connection() as conn:
                     date = {'date': date, 'document_id': document_id}
                     SCRIPT_SQL = """
@@ -211,8 +298,114 @@ def get_patient(document_id: UUID):
             print('Error parsing JSON string:')
 
 
+def get_patient_openai(document_id: UUID):
+    model = ChatOpenAI(model='gpt-4o-mini', api_key=settings.OPENAI_API_KEY)
+
+    metadata = Parameter(
+        parameter='name',
+        synonyms=[
+            'paciente',
+            'identificação',
+            'cliente',
+            'usuario',
+            'registro',
+            'indivíduo',
+            'pessoa',
+            'identidade',
+            'sujeito',
+            'nome_completo',
+            'dados_pessoais',
+        ],
+    )
+    _chunk_reference, chunks = get_chunks_openai(document_id, [metadata])
+
+    class Patient(BaseModel):
+        name: str | None
+        CPF: str | None
+        RG: str | None
+        ID: str | None
+
+    parser = PydanticOutputParser(pydantic_object=Patient)
+    prompt_template = PromptTemplate.from_template(template=prompts.TEMPLATE)
+    for chunk in chunks.values():
+        prompt = prompt_template.format(
+            format_instructions=parser.get_format_instructions(),
+            context=chunk,
+        )
+
+        user_data = model.invoke(prompt)
+
+        try:
+            user_data = parser.invoke(user_data)
+
+            if name := user_data.name:
+                with Connection() as conn:
+                    SCRIPT_SQL = """
+                        SELECT patient_id
+                        FROM patients
+                        WHERE COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) > 0.4
+                        ORDER BY COALESCE(similarity(name, %(name)s), 0) + COALESCE(similarity(identifier, %(identifier)s), 0) DESC
+                        LIMIT 1;
+                        """
+                    patient = {'name': name, 'identifier': str(user_data)}
+                    registry = conn.select(SCRIPT_SQL, patient)
+                    if not registry:
+                        SCRIPT_SQL = """
+                            INSERT INTO patients (name, identifier)
+                            VALUES (%(name)s, %(identifier)s)
+                            RETURNING patient_id;
+                            """
+                        registry = [conn.exec_with_result(SCRIPT_SQL, patient)]
+                    SCRIPT_SQL = """
+                        UPDATE documents
+                        SET unverified_patient = unverified_patient || %(patient_id)s
+                        WHERE document_id = %(document_id)s;
+                        """
+                    conn.exec(
+                        SCRIPT_SQL,
+                        {
+                            'patient_id': registry[0].get('patient_id'),
+                            'document_id': document_id,
+                        },
+                    )
+        except json.JSONDecodeError:
+            print('Error parsing JSON string:')
+
+
 def search_chunks(document_id, parameter):
     db = get_vectorstore()
+    source = {'source': f'documents/{document_id}.pdf'}
+
+    chunks = {}
+    chunk_score = {}
+    chunk_recorency = {}
+
+    vocabulary = parameter.synonyms + [parameter.parameter]
+    for data in vocabulary:
+        query = f'Quantidade de {data} do paciente'
+        results = db.similarity_search_with_score(query, k=3, filter=source)
+
+        for doc, score in results:
+            doc_id = doc.metadata.get('id')
+            if doc_id is None:
+                continue
+
+            if doc_id not in chunks:
+                chunks[doc_id] = doc.page_content
+                chunk_score[doc_id] = score
+                chunk_recorency[doc_id] = 1
+            else:
+                chunk_score[doc_id] += score
+                chunk_recorency[doc_id] += 1
+
+    scores = {doc_id: chunk_score[doc_id] + chunk_recorency[doc_id] for doc_id in chunks}  # fmt: skip
+    top_chunks = sorted(scores, key=scores.get, reverse=True)[:3]
+
+    return {doc_id: chunks[doc_id] for doc_id in top_chunks}
+
+
+def search_chunks_openai(document_id, parameter):
+    db = get_vectorstore_openai()
     source = {'source': f'documents/{document_id}.pdf'}
 
     chunks = {}
@@ -268,6 +461,19 @@ def get_chunks(document_id, parameters):
     chunks = {}
     for parameter in parameters:
         result = search_chunks(document_id, parameter)
+        for chunk_id, content in result.items():
+            if chunk_id not in chunk_reference:
+                chunk_reference[chunk_id] = []
+            chunk_reference[chunk_id].append(parameter)
+        chunks.update(result)
+    return chunk_reference, chunks
+
+
+def get_chunks_openai(document_id, parameters):
+    chunk_reference = {}
+    chunks = {}
+    for parameter in parameters:
+        result = search_chunks_openai(document_id, parameter)
         for chunk_id, content in result.items():
             if chunk_id not in chunk_reference:
                 chunk_reference[chunk_id] = []
@@ -354,6 +560,39 @@ def extract_data(document_id):
 
     etapa_start_time = time.time()
     chunk_reference, chunks = get_chunks(document_id, parameters)
+    print(f'Fim da etapa 3 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    aggregated_prompt = get_prompt(chunk_reference, chunks)
+    print(f'Fim da etapa 4 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    document_data, price = get_data(chunk_reference, chunks)
+    print(f'Fim da etapa 5 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    insert_data(document_id, aggregated_prompt, document_data, price)
+    print(f'Fim da etapa 6 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    total_time = time.time() - start_time
+    print(f'Tempo total: {total_time:.2f}')
+
+    return DocumentData(**{
+        'document_id': document_id,
+        'document_data': document_data,
+    })
+
+
+def extract_data_openai(document_id):
+    start_time = time.time()
+    print(f'Fim da etapa 1 - Tempo: {time.time() - start_time:.2f}')
+
+    etapa_start_time = time.time()
+    parameters = dao_parameters.list_database_parameters()
+    print(f'Fim da etapa 2 - Tempo: {time.time() - etapa_start_time:.2f}')
+
+    etapa_start_time = time.time()
+    chunk_reference, chunks = get_chunks_openai(document_id, parameters)
     print(f'Fim da etapa 3 - Tempo: {time.time() - etapa_start_time:.2f}')
 
     etapa_start_time = time.time()

@@ -32,20 +32,34 @@ def celery_add_database_document(document_id):
     return {'message': 'OK'}
 
 
+@celery.task()
+def celery_add_database_document_openai(document_id):
+    chunks = dao_ollama.embed_document_openai(document_id)
+
+    dao_ollama.get_patient_openai(document_id)
+    dao_ollama.get_date_openai(document_id)
+
+    dao_ollama.extract_data_openai(document_id)
+    dao_documents.att_status(document_id, chunks)
+    return {'message': 'OK'}
+
+
 @router.post(
-    '/document',
+    '/document/{sanitize}',
     status_code=HTTPStatus.CREATED,
     response_model=list[BaseDocument],
 )
-def upload_files(files: list[UploadFile] = File(...)):
+def upload_files(sanitize: bool = False, files: list[UploadFile] = File(...)):
     documents = []
-
     for file in files:
         document = dao_documents.add_database_document(file.filename)
 
         with open(f'documents/{document.document_id}.pdf', 'wb') as buffer:
             buffer.write(file.file.read())
-        celery_add_database_document.delay(document.document_id)
+        if sanitize:
+            celery_add_database_document.delay(document.document_id)
+        else:
+            celery_add_database_document_openai.delay(document.document_id)
         documents.append(document)
     return documents
 
@@ -87,6 +101,7 @@ def delete_file(document_id: UUID):
 
     dao_documents.delete_database_document(document_id)
     dao_ollama.remove_from_chroma(document_id)
+    dao_ollama.remove_from_chroma_openai(document_id)
     os.remove(file_path)
 
     return {'message': 'Document deleted!'}
